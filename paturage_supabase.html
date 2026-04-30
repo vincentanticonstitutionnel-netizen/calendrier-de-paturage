@@ -1,0 +1,3005 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#3a5a40">
+<title>Pâturage — Suivi parcelles</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --ink: #1f2421;
+    --muted: #6b7268;
+    --line: #c8c2b3;
+    --accent: #3a5a40;
+    --accent-dark: #283d2c;
+    --warn: #b8541a;
+    --danger: #8b2c2c;
+    --edit: #1a73e8;
+    --rest: #6b7268;
+    --grazing: #b8541a;
+    --available: #3a5a40;
+    --panel: #ffffff;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: var(--ink); background: var(--bg);
+    -webkit-text-size-adjust: 100%;
+  }
+  #map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #d8d4c8; }
+
+  .topbar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 1000;
+    background: var(--accent); color: #fff;
+    padding: 10px 14px; display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    transition: background 0.2s;
+  }
+  .topbar.edit-mode { background: var(--edit); }
+  .topbar h1 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; letter-spacing: 0.3px; }
+  .topbar button {
+    background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.3);
+    padding: 8px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .topbar button:active { background: rgba(255,255,255,0.3); }
+  .topbar button.mode-toggle {
+    font-weight: 600;
+  }
+  .topbar.edit-mode .mode-toggle {
+    background: #fff; color: var(--edit); border-color: #fff;
+  }
+
+  /* Edit-mode visual hint on map borders */
+  body.edit-mode #map::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    border: 3px solid var(--edit); border-top: none; border-bottom: none;
+    z-index: 500;
+  }
+
+  .layer-toggle {
+    position: absolute; top: 60px; right: 10px; z-index: 999;
+    background: var(--panel); border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .layer-toggle button {
+    background: var(--panel); border: none; padding: 10px 12px;
+    font-size: 12px; cursor: pointer; font-family: inherit;
+    border-bottom: 1px solid var(--line); color: var(--ink);
+    min-width: 60px;
+  }
+  .layer-toggle button:last-child { border-bottom: none; }
+  .layer-toggle button.active { background: var(--accent); color: #fff; }
+
+  .legend {
+    position: absolute; bottom: 80px; left: 10px; z-index: 999;
+    background: var(--panel); padding: 8px 10px; border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2); font-size: 11px;
+    line-height: 1.6;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.2); }
+
+  .bottombar {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 1000;
+    background: var(--panel); border-top: 1px solid var(--line);
+    display: flex; padding: 8px;
+    gap: 6px;
+    box-shadow: 0 -2px 6px rgba(0,0,0,0.08);
+  }
+  .bottombar button {
+    flex: 1; padding: 14px 8px; border: 1px solid var(--line);
+    background: var(--panel); border-radius: 6px;
+    font-family: inherit; font-size: 13px; font-weight: 500; color: var(--ink);
+    cursor: pointer; min-height: 50px;
+  }
+  .bottombar button:active { background: var(--bg); }
+  .bottombar button.primary {
+    background: var(--accent); color: #fff; border-color: var(--accent-dark);
+  }
+  .bottombar button.primary:active { background: var(--accent-dark); }
+  .bottombar button.danger-btn {
+    background: var(--edit); color: #fff; border-color: var(--edit);
+  }
+
+  .edit-toolbar {
+    position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+    z-index: 1001;
+    background: var(--panel); border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    display: none; padding: 6px; gap: 4px;
+    flex-wrap: wrap; max-width: 96vw;
+  }
+  .edit-toolbar.show { display: flex; }
+  .edit-toolbar button {
+    padding: 10px 14px; border: 1px solid var(--line);
+    background: var(--panel); border-radius: 6px;
+    font-family: inherit; font-size: 13px; cursor: pointer;
+    min-height: 44px;
+  }
+  .edit-toolbar button.primary {
+    background: var(--edit); color: #fff; border-color: var(--edit);
+  }
+  .edit-toolbar button.danger {
+    background: var(--panel); color: var(--danger); border-color: var(--danger);
+  }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 2000;
+    display: none; align-items: flex-end; justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--panel); width: 100%; max-width: 500px;
+    border-radius: 12px 12px 0 0; padding: 18px;
+    max-height: 85vh; overflow-y: auto;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
+  }
+  .modal h2 { margin: 0 0 12px; font-size: 17px; font-weight: 600; }
+  .modal label { display: block; margin: 12px 0 4px; font-size: 12px;
+    color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .modal input[type="text"], .modal input[type="date"], .modal textarea {
+    width: 100%; padding: 12px; border: 1px solid var(--line);
+    border-radius: 6px; font-size: 16px; font-family: inherit;
+    background: var(--bg); color: var(--ink);
+  }
+  .modal input:focus, .modal textarea:focus { outline: 2px solid var(--accent); }
+  .modal-actions {
+    display: flex; gap: 8px; margin-top: 16px;
+    flex-wrap: wrap;
+  }
+  .modal-actions button {
+    flex: 1; min-width: 100px; padding: 12px; border: 1px solid var(--line);
+    background: var(--panel); border-radius: 6px;
+    font-family: inherit; font-size: 14px; cursor: pointer;
+  }
+  .modal-actions button.primary {
+    background: var(--accent); color: #fff; border-color: var(--accent-dark);
+  }
+  .modal-actions button.danger {
+    background: var(--panel); color: var(--danger); border-color: var(--danger);
+  }
+  .modal-actions button.warn {
+    background: var(--warn); color: #fff; border-color: var(--warn);
+  }
+
+  .sejours { margin-top: 8px; }
+  .sejour {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; background: var(--bg); border-radius: 6px;
+    margin-bottom: 4px; font-size: 13px;
+  }
+  .sejour-current { background: rgba(184, 84, 26, 0.12); border-left: 3px solid var(--warn); }
+  .sejour-dates { font-variant-numeric: tabular-nums; }
+  .sejour-del { background: none; border: none; color: var(--danger);
+    font-size: 18px; cursor: pointer; padding: 0 6px; }
+  .sejour-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .info-card {
+    background: var(--bg); padding: 10px 12px; border-radius: 6px;
+    margin-bottom: 12px; font-size: 13px;
+  }
+  .info-card strong { color: var(--accent); }
+
+  .empty-msg { color: var(--muted); font-size: 13px; font-style: italic;
+    text-align: center; padding: 20px; }
+
+  .mode-banner {
+    position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
+    z-index: 999; background: var(--warn); color: #fff;
+    padding: 8px 16px; border-radius: 6px; font-size: 13px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2); display: none;
+    text-align: center; max-width: 90vw;
+  }
+  .mode-banner.show { display: block; }
+  .mode-banner.edit { background: var(--edit); }
+
+  .parcelle-label {
+    background: rgba(255,255,255,0.85); padding: 2px 6px;
+    border-radius: 3px; font-size: 11px; font-weight: 600;
+    border: 1px solid rgba(0,0,0,0.2); white-space: nowrap;
+    color: var(--ink);
+  }
+
+  #fileInput { display: none; }
+
+  .vertex-handle {
+    background: var(--edit);
+    border: 3px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    cursor: move;
+  }
+  .vertex-midpoint {
+    background: rgba(26, 115, 232, 0.5);
+    border: 2px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    cursor: pointer;
+  }
+
+  .loading-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 3000;
+    display: none; align-items: center; justify-content: center;
+    color: #fff; font-size: 16px;
+  }
+  .loading-overlay.show { display: flex; }
+  .loading-overlay .spinner {
+    background: var(--panel); color: var(--ink);
+    padding: 20px 30px; border-radius: 8px;
+  }
+</style>
+</head>
+<body>
+
+<!-- Écran d'authentification -->
+<div id="authOverlay" style="position:fixed;inset:0;background:#1f2421;display:flex;align-items:center;justify-content:center;z-index:99999;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;">
+  <div style="background:#fff;border-radius:12px;padding:28px 24px;max-width:380px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:38px;line-height:1;">🌱</div>
+      <h2 style="margin:8px 0 4px;color:#1f2421;font-size:20px;">Suivi de pâturage</h2>
+      <p style="margin:0;color:#6b7268;font-size:13px;">Connexion à votre compte</p>
+    </div>
+    <label style="display:block;font-size:13px;color:#1f2421;margin-bottom:4px;">Email</label>
+    <input type="email" id="authEmail" autocomplete="email" style="width:100%;padding:10px;border:1px solid #c8c2b3;border-radius:6px;font-size:15px;margin-bottom:12px;font-family:inherit;">
+    <label style="display:block;font-size:13px;color:#1f2421;margin-bottom:4px;">Mot de passe</label>
+    <input type="password" id="authPassword" autocomplete="current-password" style="width:100%;padding:10px;border:1px solid #c8c2b3;border-radius:6px;font-size:15px;margin-bottom:8px;font-family:inherit;">
+    <div id="authError" style="font-size:13px;color:#8b2c2c;min-height:18px;margin-bottom:8px;"></div>
+    <button id="btnSignin" style="width:100%;padding:11px;background:#3a5a40;color:#fff;border:none;border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:8px;">Se connecter</button>
+    <button id="btnSignup" style="width:100%;padding:11px;background:#fff;color:#3a5a40;border:1px solid #3a5a40;border-radius:6px;font-size:14px;cursor:pointer;font-family:inherit;">Créer un compte</button>
+    <p style="margin:16px 0 0;font-size:11px;color:#6b7268;text-align:center;line-height:1.5;">
+      Vos données restent privées et ne sont accessibles<br>qu'avec votre compte.
+    </p>
+  </div>
+</div>
+
+<!-- Menu utilisateur (déclenché par bouton dans topbar) -->
+<div id="userMenu" style="display:none;position:fixed;top:50px;right:10px;background:#fff;border:1px solid #c8c2b3;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.2);z-index:2000;min-width:220px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;">
+  <div style="padding:12px 14px;border-bottom:1px solid #e8e4d7;">
+    <div style="font-size:11px;color:#6b7268;text-transform:uppercase;letter-spacing:0.5px;">Compte</div>
+    <div id="userEmail" style="font-size:13px;color:#1f2421;font-weight:600;word-break:break-all;margin-top:2px;"></div>
+  </div>
+  <div style="padding:12px 14px;border-bottom:1px solid #e8e4d7;">
+    <div style="font-size:11px;color:#6b7268;text-transform:uppercase;letter-spacing:0.5px;">Synchronisation</div>
+    <div id="syncIndicatorMenu" style="font-size:13px;color:#1f2421;margin-top:2px;"></div>
+    <button id="btnForceSync" style="margin-top:6px;padding:5px 10px;font-size:12px;background:#f4f1ea;border:1px solid #c8c2b3;border-radius:4px;cursor:pointer;font-family:inherit;">Forcer la synchro</button>
+  </div>
+  <button id="btnSignout" style="width:100%;padding:12px 14px;background:#fff;border:none;text-align:left;font-size:14px;color:#8b2c2c;cursor:pointer;font-family:inherit;border-radius:0 0 8px 8px;">Se déconnecter</button>
+</div>
+
+<div class="topbar" id="topbar">
+  <h1 id="topbarTitle">Pâturage</h1>
+  <button id="syncIndicator" style="font-size:11px;padding:4px 8px;cursor:default;">🔴 Hors ligne</button>
+  <button id="btnUserMenu" title="Menu utilisateur">👤</button>
+  <button id="btnModeToggle" class="mode-toggle">✎ Édition</button>
+  <button id="btnHelp">?</button>
+</div>
+
+<div id="modeBanner" class="mode-banner"></div>
+
+<div id="map"></div>
+
+<div class="layer-toggle">
+  <button id="layerSat" class="active">Sat</button>
+  <button id="layerPlan">Plan</button>
+  <button id="layerCad">Cad.</button>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><span class="legend-swatch" style="background: var(--available);"></span>Disponible</div>
+  <div class="legend-item"><span class="legend-swatch" style="background: var(--grazing);"></span>Pâturée</div>
+  <div class="legend-item"><span class="legend-swatch" style="background: var(--rest);"></span>Au repos</div>
+</div>
+
+<div id="editToolbar" class="edit-toolbar">
+  <button id="etUndo">↶ Annuler dernier point</button>
+  <button id="etFinish" class="primary">✓ Terminer</button>
+  <button id="etCancel" class="danger">✕ Annuler</button>
+</div>
+
+<div class="bottombar" id="bottombarUsage">
+  <button id="btnLocate" class="primary">📍 Localiser</button>
+  <button id="btnList">Liste</button>
+  <button id="btnLotsQuick">🐄 Lots</button>
+  <button id="btnUndoUsage" title="Rien à annuler" disabled>↶</button>
+  <button id="btnMenu">⋯</button>
+</div>
+
+<div class="bottombar" id="bottombarEdit" style="display:none">
+  <button id="btnDraw" class="primary">+ Parcelle</button>
+  <button id="btnSplitMode">Découper</button>
+  <button id="btnMergeMode">Fusionner</button>
+  <button id="btnUndo" title="Rien à annuler" disabled>↶</button>
+  <button id="btnExitEdit" class="danger-btn">✓ Terminé</button>
+</div>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<div class="loading-overlay" id="loading">
+  <div class="spinner" id="loadingMsg">Chargement…</div>
+</div>
+
+<input type="file" id="fileInput" accept=".geojson,.json,.zip">
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
+<script src="https://unpkg.com/proj4@2.11.0/dist/proj4.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/polyclip-ts@0.16.8/dist/polyclip-ts.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+'use strict';
+
+// =====================================================
+// CONFIGURATION SUPABASE
+// =====================================================
+const SUPABASE_URL = 'https://rizodpcstivvaalmggpk.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_awZGoVUSCgDh6O98NEL4aQ_9o0wJ-v7';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true }
+});
+
+// État de synchronisation
+let currentUser = null;
+let syncStatus = 'offline'; // 'synced' | 'pending' | 'syncing' | 'offline' | 'error'
+let pendingPush = false;
+let pushTimer = null;
+let lastServerUpdatedAt = null;
+// =====================================================
+
+const STORAGE_KEY = 'paturage_v1';
+// Schema:
+// parcelle.usage: 'pature' | 'foin' | 'mixte' | 'culture' | 'autre' (default 'pature')
+// parcelle.events: [{ id, date, type, qty, unit, note }]
+//   type: 'fauche' | 'regain' | 'ensilage' | 'fumure' | 'semis' | 'traitement' | 'recolte' | 'autre'
+
+// Snapping (declared early so loadData() can read persisted setting)
+let snapEnabled = true;
+
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultState();
+    const d = JSON.parse(raw);
+    if (!d.parcelles) d.parcelles = [];
+    if (!d.settings) d.settings = { restDays: 30 };
+    // Migration: ensure usage and events fields
+    d.parcelles.forEach(p => {
+      if (!p.usage) p.usage = 'pature';
+      if (!Array.isArray(p.events)) p.events = [];
+    });
+    // Migration: ensure lots
+    if (!Array.isArray(d.lots) || d.lots.length === 0) {
+      d.lots = [{ id: 'lot_default', name: 'Troupeau', color: '#b8541a' }];
+    }
+    // Migration: assign default lot to existing sejours
+    const defaultLotId = d.lots[0].id;
+    d.parcelles.forEach(p => {
+      (p.sejours || []).forEach(s => {
+        if (!s.lotId) s.lotId = defaultLotId;
+      });
+    });
+    if (typeof d.settings.snapEnabled === 'boolean') {
+      snapEnabled = d.settings.snapEnabled;
+    }
+    return d;
+  } catch (e) { return defaultState(); }
+}
+function defaultState() {
+  return {
+    parcelles: [],
+    settings: { restDays: 30 },
+    lots: [{ id: 'lot_default', name: 'Troupeau', color: '#b8541a' }],
+  };
+}
+function saveData() {
+  // Toujours sauvegarder en local d'abord (rapide, fonctionne hors ligne)
+  state.updated_at = new Date().toISOString();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  // Puis programmer une synchro vers le serveur (debounced)
+  schedulePush();
+}
+
+// =====================================================
+// SYNCHRONISATION SUPABASE
+// =====================================================
+
+function setSyncStatus(s) {
+  syncStatus = s;
+  updateSyncIndicator();
+}
+
+function updateSyncIndicator() {
+  const el = document.getElementById('syncIndicator');
+  if (!el) return;
+  const labels = {
+    synced: '🟢 Synchronisé',
+    pending: '🟡 En attente',
+    syncing: '🟡 Synchro...',
+    offline: '🔴 Hors ligne',
+    error: '⚠️ Erreur'
+  };
+  el.textContent = labels[syncStatus] || '';
+  el.title = {
+    synced: 'Toutes les modifications sont sauvegardées sur le serveur',
+    pending: 'Modifications locales en attente de synchronisation',
+    syncing: 'Synchronisation en cours...',
+    offline: 'Hors ligne - les modifications seront synchronisées au retour du réseau',
+    error: 'Erreur de synchronisation - vos données sont sauvegardées localement'
+  }[syncStatus] || '';
+}
+
+function schedulePush() {
+  if (!currentUser) return; // pas connecté = pas de push
+  pendingPush = true;
+  if (syncStatus !== 'syncing') setSyncStatus('pending');
+  // Debounce : on attend 1.5s sans nouvelle modif avant de pousser
+  if (pushTimer) clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => { pushToServer(); }, 1500);
+}
+
+async function pushToServer() {
+  if (!currentUser || !pendingPush) return;
+  if (!navigator.onLine) {
+    setSyncStatus('offline');
+    return;
+  }
+  setSyncStatus('syncing');
+  try {
+    const payload = {
+      user_id: currentUser.id,
+      data: state,
+      updated_at: new Date().toISOString()
+    };
+    const { error } = await sb
+      .from('user_data')
+      .upsert(payload, { onConflict: 'user_id' });
+    if (error) throw error;
+    pendingPush = false;
+    lastServerUpdatedAt = payload.updated_at;
+    setSyncStatus('synced');
+  } catch (e) {
+    console.error('[sync] push failed:', e);
+    setSyncStatus(navigator.onLine ? 'error' : 'offline');
+    // Retry dans 30s
+    setTimeout(() => { if (pendingPush) pushToServer(); }, 30000);
+  }
+}
+
+async function pullFromServer() {
+  if (!currentUser) return null;
+  try {
+    const { data, error } = await sb
+      .from('user_data')
+      .select('data, updated_at')
+      .eq('user_id', currentUser.id)
+      .maybeSingle();
+    if (error) throw error;
+    return data; // { data, updated_at } ou null si pas de ligne
+  } catch (e) {
+    console.error('[sync] pull failed:', e);
+    return null;
+  }
+}
+
+// Au login : récupère les données serveur et choisit la version la plus récente
+async function syncOnLogin() {
+  setSyncStatus('syncing');
+  const server = await pullFromServer();
+  const localRaw = localStorage.getItem(STORAGE_KEY);
+  const localState = localRaw ? JSON.parse(localRaw) : null;
+  const localUpdated = localState && localState.updated_at ? localState.updated_at : null;
+
+  // Cas 1 : rien sur le serveur
+  if (!server) {
+    if (localState && localState.parcelles && localState.parcelles.length > 0) {
+      // L'utilisateur avait des données locales : on propose de les pousser
+      const ok = confirm(
+        `Vous avez ${localState.parcelles.length} parcelle(s) en local sur cet appareil.\n\n` +
+        `Voulez-vous les associer à votre compte et les synchroniser ?\n\n` +
+        `(Annuler = repartir de zéro avec un compte vide)`
+      );
+      if (ok) {
+        state = localState;
+        pendingPush = true;
+        await pushToServer();
+        return;
+      } else {
+        state = defaultState();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        renderParcelles();
+        setSyncStatus('synced');
+        return;
+      }
+    } else {
+      // Pas de local non plus : tout vide, on initialise
+      state = defaultState();
+      setSyncStatus('synced');
+      return;
+    }
+  }
+
+  // Cas 2 : il y a des données serveur
+  const serverUpdated = server.updated_at;
+  lastServerUpdatedAt = serverUpdated;
+
+  // Si pas de local OU local plus ancien : on prend le serveur
+  if (!localUpdated || new Date(serverUpdated) >= new Date(localUpdated)) {
+    state = server.data;
+    if (!state.parcelles) state.parcelles = [];
+    if (!state.lots || state.lots.length === 0) {
+      state.lots = [{ id: 'lot_default', name: 'Troupeau', color: '#b8541a' }];
+    }
+    if (!state.settings) state.settings = { restDays: 30 };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    renderParcelles();
+    setSyncStatus('synced');
+    return;
+  }
+
+  // Si local plus récent : on pousse vers le serveur
+  state = localState;
+  pendingPush = true;
+  await pushToServer();
+  renderParcelles();
+}
+
+// =====================================================
+// AUTHENTIFICATION
+// =====================================================
+
+function showAuthScreen() {
+  document.getElementById('authOverlay').style.display = 'flex';
+}
+function hideAuthScreen() {
+  document.getElementById('authOverlay').style.display = 'none';
+}
+
+async function doSignUp(email, password) {
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if (error) throw error;
+  return data;
+}
+
+async function doSignIn(email, password) {
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  return data;
+}
+
+async function doSignOut() {
+  // Push final avant déconnexion
+  if (pendingPush) await pushToServer();
+  await sb.auth.signOut();
+  currentUser = null;
+  // On garde le localStorage pour ne pas perdre de données par accident
+  setSyncStatus('offline');
+  showAuthScreen();
+}
+
+async function handleAuthSubmit(mode) {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const errEl = document.getElementById('authError');
+  const btnSignin = document.getElementById('btnSignin');
+  const btnSignup = document.getElementById('btnSignup');
+  errEl.textContent = '';
+  if (!email || !password) {
+    errEl.textContent = 'Email et mot de passe requis.';
+    return;
+  }
+  if (password.length < 8) {
+    errEl.textContent = 'Mot de passe : 8 caractères minimum.';
+    return;
+  }
+  btnSignin.disabled = true; btnSignup.disabled = true;
+  try {
+    if (mode === 'signup') {
+      await doSignUp(email, password);
+      errEl.style.color = 'var(--accent)';
+      errEl.textContent = '✓ Compte créé. Vérifiez votre email pour confirmer, puis revenez pour vous connecter.';
+    } else {
+      await doSignIn(email, password);
+      // Le listener onAuthStateChange va gérer la suite
+    }
+  } catch (e) {
+    errEl.style.color = 'var(--danger)';
+    errEl.textContent = e.message || 'Erreur d\'authentification';
+  } finally {
+    btnSignin.disabled = false; btnSignup.disabled = false;
+  }
+}
+
+// Listener : surveille les changements de session
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (session && session.user) {
+    currentUser = session.user;
+    document.getElementById('userEmail').textContent = currentUser.email;
+    hideAuthScreen();
+    await syncOnLogin();
+  } else {
+    currentUser = null;
+    setSyncStatus('offline');
+    showAuthScreen();
+  }
+});
+
+// Détection en ligne / hors ligne
+window.addEventListener('online', () => {
+  if (currentUser && pendingPush) pushToServer();
+  else if (currentUser) setSyncStatus('synced');
+});
+window.addEventListener('offline', () => {
+  setSyncStatus('offline');
+});
+
+// Push final avant fermeture de l'onglet
+window.addEventListener('beforeunload', () => {
+  if (pendingPush && currentUser && navigator.sendBeacon) {
+    // Tentative best-effort de sauvegarde
+    const payload = JSON.stringify({
+      user_id: currentUser.id,
+      data: state,
+      updated_at: new Date().toISOString()
+    });
+    // sendBeacon ne supporte pas les headers personnalisés facilement,
+    // on se contente de l'auto-sync au prochain login si ça échoue
+  }
+});
+
+// =====================================================
+// FIN BLOC SYNCHRONISATION
+// =====================================================
+
+let state = loadData();
+
+const map = L.map('map', { zoomControl: true, attributionControl: true })
+  .setView([43.15, 0.85], 13);
+
+const ignAttrib = '© IGN-F/Geoportail';
+const layerSat = L.tileLayer(
+  'https://data.geopf.fr/wmts?layer=ORTHOIMAGERY.ORTHOPHOTOS&style=normal&tilematrixset=PM&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image%2Fjpeg&TileMatrix={z}&TileCol={x}&TileRow={y}',
+  { maxZoom: 19, attribution: ignAttrib, tileSize: 256 }
+);
+const layerPlan = L.tileLayer(
+  'https://data.geopf.fr/wmts?layer=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&style=normal&tilematrixset=PM&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image%2Fpng&TileMatrix={z}&TileCol={x}&TileRow={y}',
+  { maxZoom: 19, attribution: ignAttrib, tileSize: 256 }
+);
+const layerCad = L.tileLayer(
+  'https://data.geopf.fr/wmts?layer=CADASTRALPARCELS.PARCELLAIRE_EXPRESS&style=normal&tilematrixset=PM&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image%2Fpng&TileMatrix={z}&TileCol={x}&TileRow={y}',
+  { maxZoom: 20, attribution: ignAttrib, tileSize: 256, opacity: 0.7 }
+);
+layerSat.addTo(map);
+let cadastreVisible = false;
+
+document.getElementById('layerSat').onclick = () => {
+  if (map.hasLayer(layerPlan)) map.removeLayer(layerPlan);
+  if (!map.hasLayer(layerSat)) layerSat.addTo(map);
+  document.getElementById('layerSat').classList.add('active');
+  document.getElementById('layerPlan').classList.remove('active');
+};
+document.getElementById('layerPlan').onclick = () => {
+  if (map.hasLayer(layerSat)) map.removeLayer(layerSat);
+  if (!map.hasLayer(layerPlan)) layerPlan.addTo(map);
+  document.getElementById('layerPlan').classList.add('active');
+  document.getElementById('layerSat').classList.remove('active');
+};
+document.getElementById('layerCad').onclick = () => {
+  cadastreVisible = !cadastreVisible;
+  if (cadastreVisible) {
+    layerCad.addTo(map);
+    document.getElementById('layerCad').classList.add('active');
+  } else {
+    map.removeLayer(layerCad);
+    document.getElementById('layerCad').classList.remove('active');
+  }
+};
+
+function todayISO() { return new Date().toISOString().slice(0, 10); }
+function daysBetween(a, b) { return Math.floor((new Date(b) - new Date(a)) / 86400000); }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function getCSS(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function newId() { return 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7); }
+
+function polygonAreaHa(coords) {
+  const latlngs = coords.map(c => L.latLng(c[1], c[0]));
+  if (latlngs.length < 3) return 0;
+  let area = 0;
+  for (let i = 0; i < latlngs.length; i++) {
+    const j = (i + 1) % latlngs.length;
+    const lat1 = latlngs[i].lat * Math.PI / 180;
+    const lat2 = latlngs[j].lat * Math.PI / 180;
+    const lon1 = latlngs[i].lng * Math.PI / 180;
+    const lon2 = latlngs[j].lng * Math.PI / 180;
+    area += (lon2 - lon1) * (2 + Math.sin(lat1) + Math.sin(lat2));
+  }
+  return Math.abs(area * 6378137 * 6378137 / 2.0) / 10000;
+}
+function polygonCenter(coords) {
+  let lat = 0, lng = 0;
+  const n = coords.length;
+  const last = n - 1;
+  const close = (n > 1 && coords[0][0] === coords[last][0] && coords[0][1] === coords[last][1]);
+  const count = close ? n - 1 : n;
+  for (let i = 0; i < count; i++) { lng += coords[i][0]; lat += coords[i][1]; }
+  return [lat / count, lng / count];
+}
+function ensureClosed(ring) {
+  if (ring.length === 0) return ring;
+  const a = ring[0], b = ring[ring.length - 1];
+  if (a[0] !== b[0] || a[1] !== b[1]) ring.push([a[0], a[1]]);
+  return ring;
+}
+function unclose(ring) {
+  if (ring.length > 1) {
+    const a = ring[0], b = ring[ring.length - 1];
+    if (a[0] === b[0] && a[1] === b[1]) return ring.slice(0, -1);
+  }
+  return ring;
+}
+
+function parcelStatus(p) {
+  if (!p.sejours || p.sejours.length === 0) return { state: 'available', days: null, lastSejour: null, lotId: null };
+  const last = p.sejours[p.sejours.length - 1];
+  if (!last.exit) return { state: 'grazing', days: daysBetween(last.entry, todayISO()), lastSejour: last, lotId: last.lotId };
+  const restDays = daysBetween(last.exit, todayISO());
+  if (restDays >= state.settings.restDays) return { state: 'available', days: restDays, lastSejour: last, lotId: null };
+  return { state: 'rest', days: restDays, lastSejour: last, lotId: null };
+}
+function statusColor(s, lotId) {
+  if (s === 'grazing' && lotId) return lotColor(lotId);
+  return s === 'grazing' ? getCSS('--grazing')
+       : s === 'rest'    ? getCSS('--rest')
+       : getCSS('--available');
+}
+
+const parcelLayer = L.featureGroup().addTo(map);
+const labelLayer = L.layerGroup().addTo(map);
+
+function renderParcelles() {
+  parcelLayer.clearLayers();
+  labelLayer.clearLayers();
+  const showLotBadge = state.lots.length > 1;
+  state.parcelles.forEach(p => {
+    const status = parcelStatus(p);
+    let color = statusColor(status.state, status.lotId);
+    let weight = 2, fillOpacity = 0.35;
+    // Highlight if currently selected for merge
+    if (mergeSelectActive && mergeSelection.includes(p.id)) {
+      color = getCSS('--edit'); weight = 4; fillOpacity = 0.5;
+    } else if (selectedParcelId === p.id) {
+      // First-tap highlight
+      weight = 5; fillOpacity = 0.6;
+    }
+    const polygon = L.polygon(p.coords.map(c => [c[1], c[0]]), {
+      color: color, weight: weight, fillColor: color, fillOpacity: fillOpacity,
+    });
+    polygon.parcelId = p.id;
+    polygon.on('click', (e) => {
+      L.DomEvent.stopPropagation(e);
+      if (mergeSelectActive) { toggleMergeSelection(p.id); return; }
+      if (mode !== 'idle') return;
+      // Two-tap selection: first tap highlights, second tap opens
+      if (selectedParcelId !== p.id) {
+        selectedParcelId = p.id;
+        renderParcelles();
+        return;
+      }
+      // Second tap: open
+      selectedParcelId = null;
+      renderParcelles();
+      if (uiMode === 'edit') {
+        openParcelleEdit(p.id);
+      } else {
+        openParcelle(p.id);
+      }
+    });
+    parcelLayer.addLayer(polygon);
+    const center = polygonCenter(p.coords);
+    let badge = '';
+    if (showLotBadge && status.state === 'grazing' && status.lotId) {
+      const lot = getLot(status.lotId);
+      if (lot) badge = ` <span style="background:${lot.color};color:#fff;padding:0 4px;border-radius:3px;font-size:9px">${escapeHtml(lot.name)}</span>`;
+    }
+    const labelHtml = `<div class="parcelle-label">${escapeHtml(p.name)}${badge}</div>`;
+    labelLayer.addLayer(L.marker(center, {
+      icon: L.divIcon({ html: labelHtml, className: '', iconSize: null }),
+      interactive: false,
+    }));
+  });
+}
+
+// Tap on map (outside any parcelle) clears selection
+map.on('click', () => {
+  if (mode !== 'idle' || mergeSelectActive) return;
+  if (selectedParcelId !== null) {
+    selectedParcelId = null;
+    renderParcelles();
+  }
+});
+
+let mode = 'idle';
+let mergeSelectActive = false;
+let mergeSelection = []; // array of parcelle ids
+
+// ============== UNDO HISTORY ==============
+const UNDO_LIMIT = 20;
+let undoStack = []; // each entry: { description, parcelles: deep clone }
+let selectedParcelId = null; // currently highlighted parcelle (1st tap)
+
+function snapshotState(description) {
+  // Deep clone parcelles so the snapshot is independent
+  const clone = JSON.parse(JSON.stringify(state.parcelles));
+  undoStack.push({ description, parcelles: clone });
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  refreshUndoButton();
+}
+
+function refreshUndoButton() {
+  const btns = [document.getElementById('btnUndo'), document.getElementById('btnUndoUsage')];
+  btns.forEach(btn => {
+    if (!btn) return;
+    if (undoStack.length === 0) {
+      btn.disabled = true;
+      btn.style.opacity = '0.4';
+      btn.title = 'Rien à annuler';
+    } else {
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      const last = undoStack[undoStack.length - 1];
+      btn.title = 'Annuler : ' + last.description;
+    }
+  });
+}
+
+function performUndo() {
+  if (undoStack.length === 0) return;
+  const last = undoStack.pop();
+  if (!confirm(`Annuler : « ${last.description} » ?`)) {
+    undoStack.push(last); // restore
+    return;
+  }
+  state.parcelles = last.parcelles;
+  saveData();
+  renderParcelles();
+  closeModal();
+  // Clear selection too in case
+  selectedParcelId = null;
+  refreshUndoButton();
+}
+const banner = document.getElementById('modeBanner');
+const editToolbar = document.getElementById('editToolbar');
+
+function setMode(m) {
+  mode = m;
+  if (m === 'idle') {
+    banner.classList.remove('show', 'edit');
+    editToolbar.classList.remove('show');
+  } else {
+    editToolbar.classList.add('show');
+  }
+}
+function showBanner(msg, isEdit) {
+  banner.textContent = msg;
+  banner.classList.add('show');
+  banner.classList.toggle('edit', !!isEdit);
+}
+
+// ============== DRAW MODE ==============
+let drawPoints = [], drawMarkers = [], drawPolyline = null, drawClickHandler = null;
+
+function startDraw() {
+  if (mode !== 'idle') return;
+  setMode('drawing');
+  drawPoints = []; drawMarkers = [];
+  drawPolyline = L.polyline([], { color: getCSS('--accent'), weight: 2, dashArray: '5,5' }).addTo(map);
+  showBanner('Touchez la carte pour ajouter des points. Tap sur un point existant pour le supprimer. ✓ pour terminer.', true);
+  drawClickHandler = (e) => {
+    const snapped = snapPoint([e.latlng.lng, e.latlng.lat], null);
+    addDrawPoint(snapped);
+    setTimeout(hideSnapIndicator, 600);
+  };
+  map.on('click', drawClickHandler);
+}
+
+function addDrawPoint(pt) {
+  drawPoints.push(pt);
+  rebuildDrawMarkers();
+}
+
+function rebuildDrawMarkers() {
+  drawMarkers.forEach(m => map.removeLayer(m));
+  drawMarkers = [];
+  drawPoints.forEach((pt, i) => {
+    const marker = L.marker([pt[1], pt[0]], {
+      icon: L.divIcon({
+        className: '',
+        html: `<div class="vertex-handle" style="width:20px;height:20px;margin-left:-10px;margin-top:-10px;"></div>`,
+        iconSize: [0, 0],
+      }),
+      draggable: true,
+    }).addTo(map);
+    let dragged = false;
+    marker.on('dragstart', () => { dragged = false; });
+    marker.on('drag', (e) => {
+      dragged = true;
+      const ll = e.target.getLatLng();
+      drawPoints[i] = [ll.lng, ll.lat];
+      redrawDrawLine();
+    });
+    marker.on('dragend', (e) => {
+      const ll = e.target.getLatLng();
+      const snapped = snapPoint([ll.lng, ll.lat], null);
+      drawPoints[i] = snapped;
+      e.target.setLatLng([snapped[1], snapped[0]]);
+      redrawDrawLine();
+      setTimeout(hideSnapIndicator, 600);
+    });
+    marker.on('click', (e) => {
+      L.DomEvent.stopPropagation(e);
+      if (dragged) return;
+      drawPoints.splice(i, 1);
+      rebuildDrawMarkers();
+    });
+    drawMarkers.push(marker);
+  });
+  redrawDrawLine();
+}
+
+function redrawDrawLine() {
+  if (!drawPolyline) return;
+  const closed = drawPoints.length >= 3 ? drawPoints.concat([drawPoints[0]]) : drawPoints;
+  drawPolyline.setLatLngs(closed.map(p => [p[1], p[0]]));
+}
+
+function undoDrawPoint() {
+  if (mode !== 'drawing' || drawPoints.length === 0) return;
+  drawPoints.pop();
+  rebuildDrawMarkers();
+}
+
+function finishDraw() {
+  if (mode !== 'drawing') return;
+  if (drawPoints.length < 3) { alert('Au moins 3 points sont nécessaires.'); return; }
+  const ring = ensureClosed(drawPoints.slice());
+  cleanupDraw();
+  promptNewParcelle(ring);
+}
+function cancelDraw() { cleanupDraw(); }
+function cleanupDraw() {
+  if (drawClickHandler) { map.off('click', drawClickHandler); drawClickHandler = null; }
+  drawMarkers.forEach(m => map.removeLayer(m));
+  drawMarkers = [];
+  if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
+  drawPoints = [];
+  hideSnapIndicator();
+  setMode('idle');
+}
+
+// ============== EDIT MODE ==============
+let editParcelId = null, editPoints = [], editPolygon = null;
+let editVertexMarkers = [], editMidMarkers = [];
+
+function startEdit(parcelId) {
+  if (mode !== 'idle') return;
+  closeModal();
+  const p = state.parcelles.find(x => x.id === parcelId);
+  if (!p) return;
+  editParcelId = parcelId;
+  editPoints = unclose(p.coords.map(c => c.slice()));
+  setMode('editing');
+  showBanner('Glissez les points bleus. Tap pour supprimer. Tap sur un point clair pour insérer.', true);
+  editPolygon = L.polygon(editPoints.map(c => [c[1], c[0]]), {
+    color: getCSS('--edit'), weight: 2, fillColor: getCSS('--edit'), fillOpacity: 0.15,
+  }).addTo(map);
+  rebuildEditHandles();
+  document.getElementById('etUndo').style.display = 'none';
+}
+
+function rebuildEditHandles() {
+  editVertexMarkers.forEach(m => map.removeLayer(m));
+  editMidMarkers.forEach(m => map.removeLayer(m));
+  editVertexMarkers = []; editMidMarkers = [];
+
+  editPoints.forEach((pt, idx) => {
+    const m = L.marker([pt[1], pt[0]], {
+      icon: L.divIcon({
+        className: '',
+        html: `<div class="vertex-handle" style="width:22px;height:22px;margin-left:-11px;margin-top:-11px;"></div>`,
+        iconSize: [0, 0],
+      }),
+      draggable: true,
+    }).addTo(map);
+    let dragged = false;
+    m.on('dragstart', () => { dragged = false; });
+    m.on('drag', (e) => {
+      dragged = true;
+      const ll = e.target.getLatLng();
+      editPoints[idx] = [ll.lng, ll.lat];
+      updateEditPolygon();
+    });
+    m.on('dragend', (e) => {
+      const ll = e.target.getLatLng();
+      const snapped = snapPoint([ll.lng, ll.lat], editParcelId);
+      editPoints[idx] = snapped;
+      e.target.setLatLng([snapped[1], snapped[0]]);
+      updateEditPolygon();
+      buildMidpoints();
+      setTimeout(hideSnapIndicator, 600);
+    });
+    m.on('click', (e) => {
+      L.DomEvent.stopPropagation(e);
+      if (dragged) return;
+      if (editPoints.length <= 3) { alert('Minimum 3 points.'); return; }
+      editPoints.splice(idx, 1);
+      updateEditPolygon();
+      rebuildEditHandles();
+    });
+    editVertexMarkers.push(m);
+  });
+  buildMidpoints();
+  updateEditPolygon();
+}
+
+function buildMidpoints() {
+  editMidMarkers.forEach(m => map.removeLayer(m));
+  editMidMarkers = [];
+  for (let i = 0; i < editPoints.length; i++) {
+    const a = editPoints[i];
+    const b = editPoints[(i + 1) % editPoints.length];
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const insertAt = i + 1;
+    const m = L.marker([mid[1], mid[0]], {
+      icon: L.divIcon({
+        className: '',
+        html: `<div class="vertex-midpoint" style="width:16px;height:16px;margin-left:-8px;margin-top:-8px;"></div>`,
+        iconSize: [0, 0],
+      }),
+      interactive: true,
+    }).addTo(map);
+    m.on('click', (e) => {
+      L.DomEvent.stopPropagation(e);
+      editPoints.splice(insertAt, 0, mid);
+      rebuildEditHandles();
+    });
+    editMidMarkers.push(m);
+  }
+}
+
+function updateEditPolygon() {
+  if (editPolygon) editPolygon.setLatLngs(editPoints.map(c => [c[1], c[0]]));
+}
+
+function finishEdit() {
+  if (mode !== 'editing') return;
+  if (editPoints.length < 3) { alert('Minimum 3 points.'); return; }
+  const p = state.parcelles.find(x => x.id === editParcelId);
+  if (p) {
+    snapshotState(`Modification du tracé de « ${p.name} »`);
+    p.coords = ensureClosed(editPoints.slice());
+    p.surface = polygonAreaHa(p.coords);
+    saveData();
+    renderParcelles();
+  }
+  cleanupEdit();
+}
+function cancelEdit() { cleanupEdit(); }
+function cleanupEdit() {
+  editVertexMarkers.forEach(m => map.removeLayer(m));
+  editMidMarkers.forEach(m => map.removeLayer(m));
+  if (editPolygon) map.removeLayer(editPolygon);
+  editVertexMarkers = []; editMidMarkers = [];
+  editPolygon = null; editPoints = []; editParcelId = null;
+  document.getElementById('etUndo').style.display = '';
+  hideSnapIndicator();
+  setMode('idle');
+}
+
+// ============== MERGE MODE ==============
+function startMergeSelection() {
+  closeModal();
+  if (state.parcelles.length < 2) {
+    alert('Au moins 2 parcelles sont nécessaires pour fusionner.');
+    return;
+  }
+  mergeSelectActive = true;
+  mergeSelection = [];
+  setMode('merging');
+  showBanner('Touchez 2 parcelles ou plus à fusionner. Re-tap pour désélectionner.', true);
+  document.getElementById('etUndo').style.display = 'none';
+  renderParcelles();
+}
+
+function toggleMergeSelection(parcelId) {
+  const idx = mergeSelection.indexOf(parcelId);
+  if (idx >= 0) mergeSelection.splice(idx, 1);
+  else mergeSelection.push(parcelId);
+  renderParcelles();
+  const n = mergeSelection.length;
+  showBanner(`${n} parcelle(s) sélectionnée(s). ✓ pour fusionner (min. 2).`, true);
+}
+
+function finishMerge() {
+  if (mergeSelection.length < 2) { alert('Sélectionnez au moins 2 parcelles.'); return; }
+  const selected = mergeSelection.map(id => state.parcelles.find(p => p.id === id)).filter(Boolean);
+  // Compute geometric union via polyclip-ts (or fallback to polygon-clipping)
+  // Lib expects [[ring, hole, ...], ...] (MultiPolygon-like)
+  const inputs = selected.map(p => [p.coords]);
+  const lib = (typeof polyclip !== 'undefined') ? polyclip
+            : (typeof polygonClipping !== 'undefined') ? polygonClipping
+            : (typeof window['polygon-clipping'] !== 'undefined') ? window['polygon-clipping']
+            : null;
+  if (!lib) {
+    alert('Bibliothèque de fusion non chargée. Vérifiez la connexion internet pour cette première utilisation, puis réessayez.');
+    return;
+  }
+  let union;
+  try {
+    union = lib.union(...inputs);
+  } catch (err) {
+    alert('Erreur de calcul de l\'union : ' + err.message);
+    return;
+  }
+  if (!union || union.length === 0) { alert('Fusion impossible.'); return; }
+  if (union.length > 1) {
+    if (!confirm(`Les parcelles sélectionnées ne sont pas toutes adjacentes (${union.length} groupes distincts détectés). La fusion va les regrouper en une seule entité avec plusieurs morceaux. Continuer ?`)) return;
+  }
+  // For our model (single polygon per parcelle), if union has >1 polygons we keep the largest only;
+  // for adjacent parcelles, union will return a single polygon, which is the normal case.
+  let chosen = union[0];
+  if (union.length > 1) {
+    // pick the largest by area
+    let bestArea = 0;
+    union.forEach(poly => {
+      const a = polygonAreaHa(poly[0]);
+      if (a > bestArea) { bestArea = a; chosen = poly; }
+    });
+  }
+  const outerRing = chosen[0]; // outer ring (we ignore holes for our use case)
+
+  // Pick which parcelle keeps its identity: the largest one
+  let keeper = selected[0];
+  selected.forEach(p => { if (p.surface > keeper.surface) keeper = p; });
+
+  // Show merge confirmation
+  const nameOptions = selected.map(p =>
+    `<option value="${p.id}" ${p.id === keeper.id ? 'selected' : ''}>${escapeHtml(p.name)} (${p.surface.toFixed(2)} ha)</option>`
+  ).join('');
+
+  openModal(`
+    <h2>Fusion de ${selected.length} parcelles</h2>
+    <div class="info-card">
+      Surface fusionnée : <strong>${polygonAreaHa(outerRing).toFixed(2)} ha</strong><br>
+      <span style="font-size:11px;color:var(--muted)">Total avant : ${selected.reduce((s,p)=>s+p.surface,0).toFixed(2)} ha (la différence vient des chevauchements éventuels)</span>
+    </div>
+    <label>Nom à conserver</label>
+    <select id="mergeKeeper" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:6px;font-size:16px;font-family:inherit;background:var(--bg);color:var(--ink);">
+      ${nameOptions}
+    </select>
+    <div class="info-card" style="background:rgba(184,84,26,0.12)">
+      Les historiques de pâturage et les événements des ${selected.length} parcelles seront <strong>tous conservés</strong> dans la parcelle fusionnée.
+    </div>
+    <div class="modal-actions">
+      <button onclick="cancelMerge()">Annuler</button>
+      <button class="primary" onclick="confirmMerge()">Fusionner</button>
+    </div>
+  `);
+  // Stash for confirm
+  window._mergeContext = { selected, outerRing };
+}
+
+window.confirmMerge = function() {
+  const ctx = window._mergeContext;
+  if (!ctx) return;
+  const keeperId = document.getElementById('mergeKeeper').value;
+  const keeper = ctx.selected.find(p => p.id === keeperId);
+  // Combined sejours (sorted by entry date)
+  const allSejours = ctx.selected.flatMap(p => p.sejours || [])
+    .slice().sort((a, b) => (a.entry || '').localeCompare(b.entry || ''));
+  // Combined events (sorted by date)
+  const allEvents = ctx.selected.flatMap(p => p.events || [])
+    .slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  // Combined notes (concat with newline if different)
+  const notes = Array.from(new Set(ctx.selected.map(p => (p.note || '').trim()).filter(Boolean))).join(' · ');
+
+  const ring = ensureClosed(ctx.outerRing.slice());
+  const merged = {
+    id: keeper.id, // keep same id so references stay alive
+    name: keeper.name,
+    note: notes,
+    usage: keeper.usage || 'pature',
+    coords: ring,
+    surface: polygonAreaHa(ring),
+    sejours: allSejours,
+    events: allEvents,
+    created: keeper.created || todayISO(),
+    mergedFrom: ctx.selected.map(p => ({ id: p.id, name: p.name })),
+  };
+
+  // Replace: remove all selected, add merged
+  snapshotState(`Fusion de ${ctx.selected.length} parcelles vers « ${keeper.name} »`);
+  const removeIds = new Set(ctx.selected.map(p => p.id));
+  state.parcelles = state.parcelles.filter(p => !removeIds.has(p.id));
+  state.parcelles.push(merged);
+  saveData();
+  cleanupMerge();
+  renderParcelles();
+};
+
+window.cancelMerge = function() { cleanupMerge(); closeModal(); };
+
+function cleanupMerge() {
+  mergeSelectActive = false;
+  mergeSelection = [];
+  document.getElementById('etUndo').style.display = '';
+  setMode('idle');
+  renderParcelles();
+  window._mergeContext = null;
+}
+
+// ============== SPLIT MODE ==============
+let splitParcelId = null, splitLinePoints = [], splitMarkers = [];
+let splitPolyline = null, splitClickHandler = null, splitHighlight = null;
+
+function startSplit(parcelIdOpt) {
+  if (mode !== 'idle') return;
+  closeModal();
+  setMode('splitting');
+  if (parcelIdOpt) {
+    splitParcelId = parcelIdOpt;
+    highlightSplitParcel();
+    beginSplitLine();
+  } else {
+    showBanner('Sélectionnez la parcelle à découper.', true);
+    parcelLayer.eachLayer(layer => {
+      const h = (e) => {
+        L.DomEvent.stopPropagation(e);
+        splitParcelId = layer.parcelId;
+        parcelLayer.eachLayer(l => { if (l._splitHandler) { l.off('click', l._splitHandler); delete l._splitHandler; } });
+        highlightSplitParcel();
+        beginSplitLine();
+      };
+      layer._splitHandler = h;
+      layer.on('click', h);
+    });
+  }
+}
+
+function highlightSplitParcel() {
+  const p = state.parcelles.find(x => x.id === splitParcelId);
+  if (!p) return;
+  splitHighlight = L.polygon(p.coords.map(c => [c[1], c[0]]), {
+    color: '#ff3333', weight: 4, fillOpacity: 0,
+  }).addTo(map);
+}
+
+function beginSplitLine() {
+  splitLinePoints = []; splitMarkers = [];
+  splitPolyline = L.polyline([], { color: '#ff3333', weight: 5, dashArray: '8,4' }).addTo(map);
+  showBanner('Tracez une ligne traversant la parcelle (entrée et sortie). ✓ pour découper.', true);
+  splitClickHandler = (e) => addSplitPoint([e.latlng.lng, e.latlng.lat]);
+  map.on('click', splitClickHandler);
+}
+
+function addSplitPoint(pt) {
+  splitLinePoints.push(pt);
+  rebuildSplitMarkers();
+}
+
+function rebuildSplitMarkers() {
+  splitMarkers.forEach(m => map.removeLayer(m));
+  splitMarkers = [];
+  splitLinePoints.forEach((pt, i) => {
+    const marker = L.marker([pt[1], pt[0]], {
+      icon: L.divIcon({
+        className: '',
+        html: `<div class="vertex-handle" style="width:22px;height:22px;margin-left:-11px;margin-top:-11px;background:#ff3333;"></div>`,
+        iconSize: [0, 0],
+      }),
+      draggable: true,
+    }).addTo(map);
+    let dragged = false;
+    marker.on('dragstart', () => { dragged = false; });
+    marker.on('drag', (e) => {
+      dragged = true;
+      const ll = e.target.getLatLng();
+      splitLinePoints[i] = [ll.lng, ll.lat];
+      splitPolyline.setLatLngs(splitLinePoints.map(p => [p[1], p[0]]));
+    });
+    marker.on('click', (e) => {
+      L.DomEvent.stopPropagation(e);
+      if (dragged) return;
+      splitLinePoints.splice(i, 1);
+      rebuildSplitMarkers();
+    });
+    splitMarkers.push(marker);
+  });
+  splitPolyline.setLatLngs(splitLinePoints.map(p => [p[1], p[0]]));
+}
+
+function undoSplitPoint() {
+  if (mode !== 'splitting' || splitLinePoints.length === 0) return;
+  splitLinePoints.pop();
+  rebuildSplitMarkers();
+}
+
+function finishSplit() {
+  if (mode !== 'splitting') return;
+  if (!splitParcelId) { alert('Sélectionnez d\'abord une parcelle.'); return; }
+  if (splitLinePoints.length < 2) { alert('Tracez une ligne d\'au moins 2 points.'); return; }
+  const p = state.parcelles.find(x => x.id === splitParcelId);
+  if (!p) { cleanupSplit(); return; }
+
+  const result = splitPolygonByLine(unclose(p.coords.slice()), splitLinePoints);
+  if (!result || result.length < 2) {
+    alert('La ligne doit traverser entièrement la parcelle (entrée d\'un côté, sortie de l\'autre).');
+    return;
+  }
+
+  const baseName = p.name;
+  snapshotState(`Découpage de « ${baseName} »`);
+  const newParcels = result.map((ring, i) => ({
+    id: newId(),
+    name: `${baseName}-${String.fromCharCode(65 + i)}`,
+    note: p.note || '',
+    usage: p.usage || 'pature',
+    coords: ensureClosed(ring),
+    surface: polygonAreaHa(ensureClosed(ring)),
+    sejours: [],
+    events: [],
+    parent: p.id,
+    created: todayISO(),
+  }));
+  state.parcelles = state.parcelles.filter(x => x.id !== splitParcelId);
+  state.parcelles.push(...newParcels);
+  saveData();
+  renderParcelles();
+  cleanupSplit();
+
+  openModal(`
+    <h2>Découpage effectué</h2>
+    <div class="info-card">
+      « ${escapeHtml(baseName)} » a été découpée en <strong>${newParcels.length}</strong> parcelles :<br>
+      ${newParcels.map(np => `• ${escapeHtml(np.name)} — ${np.surface.toFixed(2)} ha`).join('<br>')}
+    </div>
+    <p style="font-size:13px;color:var(--muted)">Touchez chaque parcelle puis « Renommer » si besoin.</p>
+    <div class="modal-actions"><button class="primary" onclick="closeModal()">OK</button></div>
+  `);
+}
+
+function cancelSplit() { cleanupSplit(); }
+function cleanupSplit() {
+  if (splitClickHandler) { map.off('click', splitClickHandler); splitClickHandler = null; }
+  parcelLayer.eachLayer(layer => {
+    if (layer._splitHandler) { layer.off('click', layer._splitHandler); delete layer._splitHandler; }
+  });
+  splitMarkers.forEach(m => map.removeLayer(m));
+  splitMarkers = [];
+  if (splitPolyline) { map.removeLayer(splitPolyline); splitPolyline = null; }
+  if (splitHighlight) { map.removeLayer(splitHighlight); splitHighlight = null; }
+  splitLinePoints = []; splitParcelId = null;
+  setMode('idle');
+}
+
+// ============== POLYGON SPLITTING ==============
+function splitPolygonByLine(ringUnclosed, line) {
+  const ring = ringUnclosed;
+  const n = ring.length;
+  if (n < 3 || line.length < 2) return null;
+
+  const polyEdges = [];
+  for (let i = 0; i < n; i++) polyEdges.push([ring[i], ring[(i + 1) % n]]);
+
+  const intersections = [];
+  for (let li = 0; li < line.length - 1; li++) {
+    const a = line[li], b = line[li + 1];
+    for (let ei = 0; ei < polyEdges.length; ei++) {
+      const c = polyEdges[ei][0], d = polyEdges[ei][1];
+      const inter = segIntersect(a, b, c, d);
+      if (inter) {
+        intersections.push({
+          edgeIdx: ei, point: inter.point,
+          tEdge: inter.tCD, tLine: li + inter.tAB,
+        });
+      }
+    }
+  }
+  if (intersections.length < 2) return null;
+  intersections.sort((a, b) => a.tLine - b.tLine);
+  const first = intersections[0];
+  const last = intersections[intersections.length - 1];
+  if (first.edgeIdx === last.edgeIdx && Math.abs(first.tEdge - last.tEdge) < 1e-9) return null;
+
+  const augmented = [];
+  const insertions = {};
+  function pushIns(it) {
+    if (!insertions[it.edgeIdx]) insertions[it.edgeIdx] = [];
+    insertions[it.edgeIdx].push(it);
+  }
+  pushIns(first); pushIns(last);
+  for (const k in insertions) insertions[k].sort((a, b) => a.tEdge - b.tEdge);
+
+  let firstIdx = -1, lastIdx = -1;
+  for (let i = 0; i < n; i++) {
+    augmented.push({ pt: ring[i], cut: null });
+    if (insertions[i]) {
+      for (const it of insertions[i]) {
+        const tag = (it === first) ? 'first' : (it === last) ? 'last' : null;
+        const idx = augmented.length;
+        augmented.push({ pt: it.point, cut: tag });
+        if (tag === 'first') firstIdx = idx;
+        else if (tag === 'last') lastIdx = idx;
+      }
+    }
+  }
+  if (firstIdx < 0 || lastIdx < 0) return null;
+
+  const midLinePoints = [];
+  for (let li = 0; li < line.length; li++) {
+    if (li > first.tLine && li < last.tLine) midLinePoints.push(line[li]);
+  }
+
+  const N = augmented.length;
+  const pieceA = [];
+  let i = firstIdx;
+  while (true) {
+    pieceA.push(augmented[i].pt);
+    if (i === lastIdx) break;
+    i = (i + 1) % N;
+  }
+  for (let k = midLinePoints.length - 1; k >= 0; k--) pieceA.push(midLinePoints[k]);
+
+  const pieceB = [];
+  i = lastIdx;
+  while (true) {
+    pieceB.push(augmented[i].pt);
+    if (i === firstIdx) break;
+    i = (i + 1) % N;
+  }
+  for (let k = 0; k < midLinePoints.length; k++) pieceB.push(midLinePoints[k]);
+
+  if (pieceA.length < 3 || pieceB.length < 3) return null;
+  return [pieceA, pieceB];
+}
+
+function segIntersect(a, b, c, d) {
+  const x1 = a[0], y1 = a[1], x2 = b[0], y2 = b[1];
+  const x3 = c[0], y3 = c[1], x4 = d[0], y4 = d[1];
+  const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+  if (Math.abs(denom) < 1e-15) return null;
+  const tAB = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+  const tCD = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+  if (tAB < -1e-9 || tAB > 1 + 1e-9) return null;
+  if (tCD < -1e-9 || tCD > 1 + 1e-9) return null;
+  return {
+    point: [x1 + tAB * (x2 - x1), y1 + tAB * (y2 - y1)],
+    tAB: Math.max(0, Math.min(1, tAB)),
+    tCD: Math.max(0, Math.min(1, tCD)),
+  };
+}
+
+// ============== TOOLBAR ==============
+// UI mode (usage / edit) controls which bottom bar is shown
+let uiMode = 'usage'; // 'usage' | 'edit'
+function setUIMode(m) {
+  uiMode = m;
+  const topbar = document.getElementById('topbar');
+  const title = document.getElementById('topbarTitle');
+  const toggle = document.getElementById('btnModeToggle');
+  const usageBar = document.getElementById('bottombarUsage');
+  const editBar = document.getElementById('bottombarEdit');
+  if (m === 'edit') {
+    topbar.classList.add('edit-mode');
+    document.body.classList.add('edit-mode');
+    title.textContent = 'Pâturage — Édition';
+    toggle.textContent = '✓ Terminé';
+    usageBar.style.display = 'none';
+    editBar.style.display = 'flex';
+  } else {
+    topbar.classList.remove('edit-mode');
+    document.body.classList.remove('edit-mode');
+    title.textContent = 'Pâturage';
+    toggle.textContent = '✎ Édition';
+    usageBar.style.display = 'flex';
+    editBar.style.display = 'none';
+  }
+}
+
+document.getElementById('btnModeToggle').onclick = () => {
+  if (mode !== 'idle' || mergeSelectActive) {
+    alert('Terminez d\'abord l\'action en cours.');
+    return;
+  }
+  setUIMode(uiMode === 'usage' ? 'edit' : 'usage');
+};
+document.getElementById('btnExitEdit').onclick = () => {
+  if (mode !== 'idle' || mergeSelectActive) return;
+  setUIMode('usage');
+};
+
+document.getElementById('btnDraw').onclick = () => {
+  if (mode === 'drawing') { cancelDraw(); return; }
+  if (mode !== 'idle') return;
+  startDraw();
+};
+document.getElementById('btnSplitMode').onclick = () => {
+  if (mode !== 'idle') return;
+  startSplit();
+};
+document.getElementById('btnMergeMode').onclick = () => {
+  if (mode !== 'idle') return;
+  startMergeSelection();
+};
+document.getElementById('btnLotsQuick').onclick = () => {
+  openLots();
+};
+document.getElementById('btnUndo').onclick = () => {
+  if (mode !== 'idle' || mergeSelectActive) {
+    alert('Terminez l\'action en cours avant d\'annuler.');
+    return;
+  }
+  performUndo();
+};
+document.getElementById('btnUndoUsage').onclick = () => {
+  if (mode !== 'idle' || mergeSelectActive) {
+    alert('Terminez l\'action en cours avant d\'annuler.');
+    return;
+  }
+  performUndo();
+};
+document.getElementById('etUndo').onclick = () => {
+  if (mode === 'drawing') undoDrawPoint();
+  else if (mode === 'splitting') undoSplitPoint();
+};
+document.getElementById('etFinish').onclick = () => {
+  if (mode === 'drawing') finishDraw();
+  else if (mode === 'editing') finishEdit();
+  else if (mode === 'splitting') finishSplit();
+  else if (mode === 'merging') finishMerge();
+};
+document.getElementById('etCancel').onclick = () => {
+  if (mode === 'drawing') cancelDraw();
+  else if (mode === 'editing') cancelEdit();
+  else if (mode === 'splitting') cancelSplit();
+  else if (mode === 'merging') cleanupMerge();
+};
+
+// ============== MODAL ==============
+const modal = document.getElementById('modal');
+const modalContent = document.getElementById('modalContent');
+function openModal(html) { modalContent.innerHTML = html; modal.classList.add('show'); }
+function closeModal() { modal.classList.remove('show'); }
+modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+window.closeModal = closeModal;
+
+// ============== PARCELLE ACTIONS ==============
+function promptNewParcelle(coords) {
+  const ha = polygonAreaHa(coords).toFixed(2);
+  openModal(`
+    <h2>Nouvelle parcelle</h2>
+    <div class="info-card">Surface : <strong>${ha} ha</strong></div>
+    <label>Nom</label>
+    <input type="text" id="newName" placeholder="ex: Pré du puits" autofocus>
+    <label>Note (facultatif)</label>
+    <textarea id="newNote" rows="2" placeholder="point d'eau, abri, etc."></textarea>
+    <div class="modal-actions">
+      <button onclick="closeModal()">Annuler</button>
+      <button class="primary" onclick="saveNewParcelle()">Enregistrer</button>
+    </div>
+  `);
+  window._pendingCoords = coords;
+  window._pendingHa = ha;
+}
+
+window.saveNewParcelle = function() {
+  const name = document.getElementById('newName').value.trim() || 'Sans nom';
+  const note = document.getElementById('newNote').value.trim();
+  snapshotState(`Création de la parcelle « ${name} »`);
+  state.parcelles.push({
+    id: newId(), name, note,
+    usage: 'pature',
+    surface: parseFloat(window._pendingHa),
+    coords: window._pendingCoords,
+    sejours: [], events: [], created: todayISO(),
+  });
+  saveData(); renderParcelles(); closeModal();
+};
+
+// ============== EVENTS HELPERS ==============
+const EVENT_TYPES = {
+  fauche: { label: 'Fauche (foin)', icon: '🌾', defaultUnit: 't' },
+  regain: { label: 'Regain', icon: '🌱', defaultUnit: 't' },
+  ensilage: { label: 'Ensilage', icon: '🌿', defaultUnit: 't' },
+  fumure: { label: 'Fumure / fertilisation', icon: '💩', defaultUnit: 't' },
+  semis: { label: 'Semis / sursemis', icon: '🌰', defaultUnit: 'kg/ha' },
+  traitement: { label: 'Traitement', icon: '🧪', defaultUnit: 'L/ha' },
+  recolte: { label: 'Récolte (autre)', icon: '🚜', defaultUnit: 't' },
+  autre: { label: 'Autre', icon: '•', defaultUnit: '' },
+};
+const USAGE_LABELS = {
+  pature: 'Pâture',
+  foin: 'Foin',
+  mixte: 'Mixte (pâture + foin)',
+  culture: 'Culture',
+  autre: 'Autre',
+};
+
+function eventTypeLabel(t) { return (EVENT_TYPES[t] && EVENT_TYPES[t].label) || t; }
+function eventTypeIcon(t) { return (EVENT_TYPES[t] && EVENT_TYPES[t].icon) || '•'; }
+
+// ============== SNAPPING ==============
+const SNAP_PIXELS = 20;
+let snapIndicator = null;
+
+function showSnapIndicator(latlng) {
+  if (snapIndicator) map.removeLayer(snapIndicator);
+  snapIndicator = L.circleMarker(latlng, {
+    radius: 12, color: '#ff8800', fillColor: '#ff8800',
+    fillOpacity: 0.2, weight: 2, interactive: false,
+  }).addTo(map);
+}
+function hideSnapIndicator() {
+  if (snapIndicator) { map.removeLayer(snapIndicator); snapIndicator = null; }
+}
+
+// Project a [lng,lat] to layer pixels
+function toPixel(lnglat) {
+  return map.latLngToLayerPoint(L.latLng(lnglat[1], lnglat[0]));
+}
+function fromPixel(pt) {
+  const ll = map.layerPointToLatLng(pt);
+  return [ll.lng, ll.lat];
+}
+
+// Distance from point P to segment AB in pixel space ; returns { dist, projection }
+function pointSegPixelDist(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len2 = dx*dx + dy*dy;
+  let t = len2 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  const proj = L.point(a.x + t * dx, a.y + t * dy);
+  return { dist: Math.hypot(p.x - proj.x, p.y - proj.y), projection: proj, t };
+}
+
+// Snap a [lng,lat] candidate to existing parcelle vertices/edges if within tolerance.
+// excludeId: parcelle id to ignore (used during edit mode to avoid snapping to self).
+// Returns either the original point or a snapped one.
+function snapPoint(pt, excludeId) {
+  if (!snapEnabled) { hideSnapIndicator(); return pt; }
+  const pPix = toPixel(pt);
+  let bestVertex = null, bestVertexDist = SNAP_PIXELS + 1;
+  let bestEdge = null, bestEdgeDist = SNAP_PIXELS + 1;
+  state.parcelles.forEach(par => {
+    if (par.id === excludeId) return;
+    const ring = par.coords;
+    // vertices
+    for (let i = 0; i < ring.length - 1; i++) { // -1 because last=first
+      const v = ring[i];
+      const vPix = toPixel(v);
+      const d = Math.hypot(pPix.x - vPix.x, pPix.y - vPix.y);
+      if (d < bestVertexDist) { bestVertexDist = d; bestVertex = v; }
+    }
+    // edges
+    for (let i = 0; i < ring.length - 1; i++) {
+      const a = ring[i], b = ring[(i + 1) % ring.length];
+      const aPix = toPixel(a), bPix = toPixel(b);
+      const r = pointSegPixelDist(pPix, aPix, bPix);
+      if (r.dist < bestEdgeDist) {
+        bestEdgeDist = r.dist;
+        const ll = fromPixel(r.projection);
+        bestEdge = ll;
+      }
+    }
+  });
+  // Vertex snap takes priority if both within tolerance
+  if (bestVertex && bestVertexDist <= SNAP_PIXELS) {
+    showSnapIndicator(L.latLng(bestVertex[1], bestVertex[0]));
+    return [bestVertex[0], bestVertex[1]];
+  }
+  if (bestEdge && bestEdgeDist <= SNAP_PIXELS) {
+    showSnapIndicator(L.latLng(bestEdge[1], bestEdge[0]));
+    return bestEdge;
+  }
+  hideSnapIndicator();
+  return pt;
+}
+const LOT_COLORS = ['#b8541a', '#1a73e8', '#8b2c2c', '#7a3e9b', '#0d7c66', '#c2640a', '#5a3825', '#444b3d'];
+
+function getLot(lotId) {
+  return state.lots.find(l => l.id === lotId) || state.lots[0];
+}
+function lotColor(lotId) {
+  const l = getLot(lotId);
+  return l ? l.color : getCSS('--grazing');
+}
+// Find the parcelle currently occupied by a given lot, if any
+function currentParcelForLot(lotId) {
+  for (const p of state.parcelles) {
+    const last = (p.sejours || [])[p.sejours.length - 1];
+    if (last && !last.exit && last.lotId === lotId) return { parcelle: p, sejour: last };
+  }
+  return null;
+}
+
+function annualSummary(events) {
+  // returns { '2025': { fauche: { total: 4.2, unit: 't', count: 2 }, ... }, ... }
+  const out = {};
+  events.forEach(ev => {
+    const year = (ev.date || '').slice(0, 4);
+    if (!year) return;
+    if (!out[year]) out[year] = {};
+    if (!out[year][ev.type]) out[year][ev.type] = { total: 0, unit: ev.unit || '', count: 0, mixed: false };
+    const slot = out[year][ev.type];
+    if (slot.unit && ev.unit && slot.unit !== ev.unit) slot.mixed = true;
+    if (typeof ev.qty === 'number' && !isNaN(ev.qty)) slot.total += ev.qty;
+    if (!slot.unit && ev.unit) slot.unit = ev.unit;
+    slot.count += 1;
+  });
+  return out;
+}
+
+window.openParcelle = function(id) {
+  const p = state.parcelles.find(x => x.id === id);
+  if (!p) return;
+  const status = parcelStatus(p);
+  const grazingLotName = status.state === 'grazing' && status.lotId && state.lots.length > 1
+    ? ` (lot ${escapeHtml(getLot(status.lotId).name)})` : '';
+  const statusLabel = status.state === 'grazing' ? `🐄 Pâturée depuis ${status.days} j${grazingLotName}`
+                    : status.state === 'rest'    ? `💤 Au repos depuis ${status.days} j`
+                    : status.lastSejour ? `✓ Disponible (repos ${status.days} j)` : '✓ Jamais pâturée';
+
+  const sejoursHtml = (p.sejours.length === 0)
+    ? '<div class="empty-msg">Aucun séjour enregistré.</div>'
+    : p.sejours.slice().reverse().map((s, idx) => {
+        const realIdx = p.sejours.length - 1 - idx;
+        const isCurrent = !s.exit;
+        const dur = s.exit ? daysBetween(s.entry, s.exit) : daysBetween(s.entry, todayISO());
+        const lotTag = (state.lots.length > 1 && s.lotId) ? `<span style="background:${lotColor(s.lotId)};color:#fff;padding:1px 5px;border-radius:3px;font-size:10px;margin-right:4px">${escapeHtml(getLot(s.lotId).name)}</span>` : '';
+        return `
+          <div class="sejour ${isCurrent ? 'sejour-current' : ''}">
+            <div>
+              <div class="sejour-dates">${lotTag}${formatDate(s.entry)} → ${s.exit ? formatDate(s.exit) : '<em>en cours</em>'}</div>
+              <div class="sejour-meta">${dur} jour${dur > 1 ? 's' : ''}${s.note ? ' · ' + escapeHtml(s.note) : ''}</div>
+            </div>
+            <button class="sejour-del" onclick="deleteSejour('${p.id}', ${realIdx})" title="Supprimer">×</button>
+          </div>
+        `;
+      }).join('');
+
+  // Events list (most recent first)
+  const eventsSorted = (p.events || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const eventsHtml = eventsSorted.length === 0
+    ? '<div class="empty-msg">Aucun événement enregistré.</div>'
+    : eventsSorted.map(ev => {
+        const qtyStr = (typeof ev.qty === 'number' && !isNaN(ev.qty))
+          ? ` · <strong>${ev.qty}${ev.unit ? ' ' + escapeHtml(ev.unit) : ''}</strong>`
+          : '';
+        return `
+          <div class="sejour">
+            <div>
+              <div class="sejour-dates">${eventTypeIcon(ev.type)} ${formatDate(ev.date)} — ${escapeHtml(eventTypeLabel(ev.type))}${qtyStr}</div>
+              ${ev.note ? `<div class="sejour-meta">${escapeHtml(ev.note)}</div>` : ''}
+            </div>
+            <button class="sejour-del" onclick="deleteEvent('${p.id}', '${ev.id}')" title="Supprimer">×</button>
+          </div>
+        `;
+      }).join('');
+
+  // Annual summary (last 3 years)
+  const summary = annualSummary(p.events || []);
+  const years = Object.keys(summary).sort().reverse().slice(0, 3);
+  const summaryHtml = years.length === 0 ? '' : `
+    <label>Récap annuel</label>
+    ${years.map(y => {
+      const types = Object.keys(summary[y]);
+      const lines = types.map(t => {
+        const s = summary[y][t];
+        const qty = s.total > 0
+          ? `${s.total.toFixed(s.total >= 10 ? 1 : 2).replace(/\.?0+$/, '')}${s.unit ? ' ' + s.unit : ''}${s.mixed ? ' *' : ''}`
+          : `${s.count} fois`;
+        return `${eventTypeIcon(t)} ${eventTypeLabel(t)} : <strong>${qty}</strong>${s.count > 1 && s.total > 0 ? ` (${s.count}×)` : ''}`;
+      }).join('<br>');
+      return `<div class="info-card"><strong>${y}</strong><br>${lines}</div>`;
+    }).join('')}
+  `;
+
+  const actionBtn = status.state === 'grazing'
+    ? `<button class="warn" onclick="endSejour('${p.id}')">Sortir le troupeau</button>`
+    : `<button class="primary" onclick="startSejour('${p.id}')">Entrée du troupeau</button>`;
+
+  openModal(`
+    <h2>${escapeHtml(p.name)}</h2>
+    <div class="info-card">
+      ${statusLabel}<br>
+      <strong>${p.surface.toFixed(2)} ha</strong> · Usage : <strong>${USAGE_LABELS[p.usage] || 'Pâture'}</strong>
+      ${p.note ? '<br><em>' + escapeHtml(p.note) + '</em>' : ''}
+    </div>
+
+    ${summaryHtml}
+
+    <label>Pâturage</label>
+    <div class="sejours">${sejoursHtml}</div>
+    <div class="modal-actions">
+      ${actionBtn}
+    </div>
+
+    <label>Foin / fauche / autres événements</label>
+    <div class="sejours">${eventsHtml}</div>
+    <div class="modal-actions">
+      <button class="primary" onclick="addEvent('${p.id}')">+ Ajouter un événement</button>
+    </div>
+
+    <div class="modal-actions" style="margin-top:24px">
+      <button onclick="editParcelleInfo('${p.id}')">Renommer / usage</button>
+      <button onclick="zoomToParcelle('${p.id}')">Centrer</button>
+    </div>
+    <div class="modal-actions">
+      <button onclick="closeModal()">Fermer</button>
+    </div>
+  `);
+};
+window.startEdit = startEdit;
+window.startSplit = startSplit;
+window.startMergeSelection = startMergeSelection;
+
+window.openParcelleEdit = function(id) {
+  const p = state.parcelles.find(x => x.id === id);
+  if (!p) return;
+  openModal(`
+    <h2>${escapeHtml(p.name)}</h2>
+    <div class="info-card">
+      <strong>${p.surface.toFixed(2)} ha</strong> · ${USAGE_LABELS[p.usage] || 'Pâture'}
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 12px">Actions d'édition de cette parcelle :</p>
+    <div class="modal-actions">
+      <button class="primary" onclick="startEdit('${p.id}')">Modifier le tracé</button>
+    </div>
+    <div class="modal-actions">
+      <button onclick="startSplit('${p.id}')">Découper</button>
+      <button onclick="editParcelleInfo('${p.id}')">Renommer / usage</button>
+    </div>
+    <div class="modal-actions">
+      <button onclick="zoomToParcelle('${p.id}')">Centrer</button>
+      <button class="danger" onclick="deleteParcelle('${p.id}')">Supprimer</button>
+    </div>
+    <div class="modal-actions">
+      <button onclick="closeModal()">Fermer</button>
+    </div>
+  `);
+};
+
+function formatDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
+window.startSejour = function(id) {
+  const p = state.parcelles.find(x => x.id === id);
+  if (!p) return;
+  const multiLot = state.lots.length > 1;
+  // Build lot selector ; default = first lot, or the lot currently grazing somewhere if any
+  const lotOptions = state.lots.map(l => {
+    const cur = currentParcelForLot(l.id);
+    const curInfo = cur ? ` (actuellement sur ${escapeHtml(cur.parcelle.name)})` : '';
+    return `<option value="${l.id}">${escapeHtml(l.name)}${curInfo}</option>`;
+  }).join('');
+
+  openModal(`
+    <h2>Entrée du troupeau</h2>
+    <div class="info-card"><strong>${escapeHtml(p.name)}</strong></div>
+    ${multiLot ? `
+      <label>Lot</label>
+      <select id="sejourLot" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:6px;font-size:16px;font-family:inherit;background:var(--bg);color:var(--ink);">
+        ${lotOptions}
+      </select>
+    ` : `<input type="hidden" id="sejourLot" value="${state.lots[0].id}">`}
+    <label>Date d'entrée</label>
+    <input type="date" id="sejourDate" value="${todayISO()}">
+    <label>Note (facultatif)</label>
+    <input type="text" id="sejourNote" placeholder="ex: 18 vaches + veaux">
+    <div id="autoExitInfo" style="display:none" class="info-card"></div>
+    <div class="modal-actions">
+      <button onclick="openParcelle('${p.id}')">Annuler</button>
+      <button class="primary" onclick="confirmStartSejour('${p.id}')">Valider</button>
+    </div>
+  `);
+
+  // Show auto-exit hint when lot selection changes
+  const lotSel = document.getElementById('sejourLot');
+  const dateInp = document.getElementById('sejourDate');
+  const info = document.getElementById('autoExitInfo');
+  function refreshHint() {
+    const lotId = lotSel.value;
+    const cur = currentParcelForLot(lotId);
+    if (cur && cur.parcelle.id !== id) {
+      info.style.display = '';
+      info.innerHTML = `⓵ Le lot <strong>${escapeHtml(getLot(lotId).name)}</strong> est actuellement sur <strong>${escapeHtml(cur.parcelle.name)}</strong>. Sa sortie sera enregistrée automatiquement à la même date.`;
+    } else {
+      info.style.display = 'none';
+    }
+  }
+  if (lotSel.tagName === 'SELECT') lotSel.addEventListener('change', refreshHint);
+  dateInp.addEventListener('change', refreshHint);
+  refreshHint();
+};
+
+window.confirmStartSejour = function(id) {
+  const p = state.parcelles.find(x => x.id === id);
+  const lotId = document.getElementById('sejourLot').value;
+  const date = document.getElementById('sejourDate').value;
+  const note = document.getElementById('sejourNote').value.trim();
+  if (!date) return alert('Date requise');
+
+  // Auto-exit: if this lot is currently grazing somewhere else, close it
+  const cur = currentParcelForLot(lotId);
+  if (cur && cur.parcelle.id !== id) {
+    if (date < cur.sejour.entry) {
+      return alert(`Date d'entrée antérieure à l'entrée actuelle du lot sur ${cur.parcelle.name} (${formatDate(cur.sejour.entry)}).`);
+    }
+  } else if (cur && cur.parcelle.id === id) {
+    return alert('Ce lot est déjà sur cette parcelle.');
+  }
+
+  snapshotState(`Entrée du troupeau sur « ${p.name} »`);
+  // Re-fetch in case (parcelles array unchanged so reference still valid; but cur ref also still valid)
+  if (cur && cur.parcelle.id !== id) {
+    cur.sejour.exit = date;
+  }
+  p.sejours.push({ entry: date, exit: null, note, lotId });
+  saveData(); renderParcelles(); closeModal();
+};
+
+window.endSejour = function(id) {
+  const p = state.parcelles.find(x => x.id === id);
+  const last = p.sejours[p.sejours.length - 1];
+  if (!last || last.exit) return;
+  openModal(`
+    <h2>Sortie du troupeau</h2>
+    <div class="info-card"><strong>${escapeHtml(p.name)}</strong><br>
+    Entrée le ${formatDate(last.entry)}</div>
+    <label>Date de sortie</label>
+    <input type="date" id="sejourExit" value="${todayISO()}" min="${last.entry}">
+    <div class="modal-actions">
+      <button onclick="openParcelle('${p.id}')">Annuler</button>
+      <button class="primary" onclick="confirmEndSejour('${p.id}')">Valider</button>
+    </div>
+  `);
+};
+window.confirmEndSejour = function(id) {
+  const p = state.parcelles.find(x => x.id === id);
+  const last = p.sejours[p.sejours.length - 1];
+  const date = document.getElementById('sejourExit').value;
+  if (!date) return alert('Date requise');
+  if (date < last.entry) return alert('La date de sortie doit être ≥ entrée');
+  snapshotState(`Sortie du troupeau de « ${p.name} »`);
+  last.exit = date;
+  saveData(); renderParcelles(); closeModal();
+};
+
+window.deleteSejour = function(id, idx) {
+  if (!confirm('Supprimer ce séjour ?')) return;
+  const p = state.parcelles.find(x => x.id === id);
+  p.sejours.splice(idx, 1);
+  saveData(); renderParcelles(); openParcelle(id);
+};
+
+window.editParcelleInfo = function(id) {
+  const p = state.parcelles.find(x => x.id === id);
+  const usageOptions = Object.entries(USAGE_LABELS).map(([k, v]) =>
+    `<option value="${k}" ${p.usage === k ? 'selected' : ''}>${escapeHtml(v)}</option>`
+  ).join('');
+  openModal(`
+    <h2>Renommer la parcelle</h2>
+    <label>Nom</label>
+    <input type="text" id="editName" value="${escapeHtml(p.name)}">
+    <label>Usage principal</label>
+    <select id="editUsage" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:6px;font-size:16px;font-family:inherit;background:var(--bg);color:var(--ink);">
+      ${usageOptions}
+    </select>
+    <label>Note</label>
+    <textarea id="editNote" rows="2">${escapeHtml(p.note || '')}</textarea>
+    <div class="modal-actions">
+      <button onclick="openParcelle('${p.id}')">Annuler</button>
+      <button class="primary" onclick="saveEditParcelle('${p.id}')">Enregistrer</button>
+    </div>
+  `);
+};
+window.saveEditParcelle = function(id) {
+  const p = state.parcelles.find(x => x.id === id);
+  p.name = document.getElementById('editName').value.trim() || 'Sans nom';
+  p.usage = document.getElementById('editUsage').value;
+  p.note = document.getElementById('editNote').value.trim();
+  saveData(); renderParcelles(); openParcelle(id);
+};
+
+// ============== EVENT MANAGEMENT ==============
+window.addEvent = function(id) {
+  const p = state.parcelles.find(x => x.id === id);
+  if (!p) return;
+  const typeOptions = Object.entries(EVENT_TYPES).map(([k, v]) =>
+    `<option value="${k}" data-unit="${v.defaultUnit}">${v.icon} ${escapeHtml(v.label)}</option>`
+  ).join('');
+  openModal(`
+    <h2>Nouvel événement</h2>
+    <div class="info-card"><strong>${escapeHtml(p.name)}</strong> · ${p.surface.toFixed(2)} ha</div>
+    <label>Type</label>
+    <select id="evType" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:6px;font-size:16px;font-family:inherit;background:var(--bg);color:var(--ink);">
+      ${typeOptions}
+    </select>
+    <label>Date</label>
+    <input type="date" id="evDate" value="${todayISO()}">
+    <label>Quantité (facultatif)</label>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="evQty" inputmode="decimal" placeholder="ex: 4.2" style="flex:2">
+      <input type="text" id="evUnit" placeholder="t" style="flex:1">
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px">Unités libres : t, kg, kg/ha, L/ha, balles, bottes…</div>
+    <label>Note (facultatif)</label>
+    <textarea id="evNote" rows="2" placeholder="ex: 1ère coupe, foin sec, vendu à X"></textarea>
+    <div class="modal-actions">
+      <button onclick="openParcelle('${p.id}')">Annuler</button>
+      <button class="primary" onclick="saveEvent('${p.id}')">Enregistrer</button>
+    </div>
+  `);
+  // Auto-fill unit when type changes
+  const sel = document.getElementById('evType');
+  const unitInput = document.getElementById('evUnit');
+  const setDefaultUnit = () => {
+    const opt = sel.options[sel.selectedIndex];
+    if (opt && !unitInput.value) unitInput.value = opt.getAttribute('data-unit') || '';
+  };
+  sel.addEventListener('change', () => { unitInput.value = sel.options[sel.selectedIndex].getAttribute('data-unit') || ''; });
+  setDefaultUnit();
+};
+
+window.saveEvent = function(id) {
+  const p = state.parcelles.find(x => x.id === id);
+  if (!p) return;
+  const type = document.getElementById('evType').value;
+  const date = document.getElementById('evDate').value;
+  const qtyRaw = document.getElementById('evQty').value.trim().replace(',', '.');
+  const unit = document.getElementById('evUnit').value.trim();
+  const note = document.getElementById('evNote').value.trim();
+  if (!date) return alert('Date requise');
+  const qty = qtyRaw === '' ? null : parseFloat(qtyRaw);
+  if (qtyRaw !== '' && isNaN(qty)) return alert('Quantité invalide');
+  if (!Array.isArray(p.events)) p.events = [];
+  snapshotState(`Événement ${eventTypeLabel(type)} sur « ${p.name} »`);
+  p.events.push({
+    id: 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
+    type, date, qty, unit, note,
+  });
+  saveData();
+  closeModal();
+};
+
+window.deleteEvent = function(parcelId, eventId) {
+  if (!confirm('Supprimer cet événement ?')) return;
+  const p = state.parcelles.find(x => x.id === parcelId);
+  if (!p) return;
+  p.events = (p.events || []).filter(e => e.id !== eventId);
+  saveData();
+  openParcelle(parcelId);
+};
+
+window.deleteParcelle = function(id) {
+  const p = state.parcelles.find(x => x.id === id);
+  if (!p) return;
+  if (!confirm('Supprimer cette parcelle et tout son historique ?')) return;
+  snapshotState(`Suppression de « ${p.name} »`);
+  state.parcelles = state.parcelles.filter(p => p.id !== id);
+  saveData(); renderParcelles(); closeModal();
+};
+
+window.zoomToParcelle = function(id) {
+  const p = state.parcelles.find(x => x.id === id);
+  const bounds = L.latLngBounds(p.coords.map(c => [c[1], c[0]]));
+  map.fitBounds(bounds, { padding: [40, 40] });
+  closeModal();
+};
+
+// ============== LIST ==============
+document.getElementById('btnList').onclick = () => {
+  if (state.parcelles.length === 0) {
+    openModal(`
+      <h2>Liste des parcelles</h2>
+      <div class="empty-msg">Aucune parcelle. Touchez "+ Parcelle" ou importez un export Télépac depuis le menu ⋯.</div>
+      <div class="modal-actions"><button onclick="closeModal()">Fermer</button></div>
+    `);
+    return;
+  }
+  renderList('all');
+};
+
+window.renderList = function(filter) {
+  const filtered = (filter === 'all')
+    ? state.parcelles.slice()
+    : state.parcelles.filter(p => (p.usage || 'pature') === filter);
+  const sorted = filtered.sort((a, b) => {
+    const sa = parcelStatus(a).state, sb = parcelStatus(b).state;
+    const order = { grazing: 0, rest: 1, available: 2 };
+    if (order[sa] !== order[sb]) return order[sa] - order[sb];
+    return a.name.localeCompare(b.name);
+  });
+
+  const items = sorted.map(p => {
+    const s = parcelStatus(p);
+    const color = statusColor(s.state, s.lotId);
+    const label = s.state === 'grazing' ? (s.lotId && state.lots.length > 1 ? `${escapeHtml(getLot(s.lotId).name)} ${s.days}j` : `Pâturée ${s.days}j`)
+                : s.state === 'rest'    ? `Repos ${s.days}j`
+                : s.lastSejour ? `Dispo (${s.days}j)` : 'Vierge';
+    const usageBadge = `<span style="font-size:10px;background:var(--line);padding:1px 5px;border-radius:3px;color:var(--ink);">${USAGE_LABELS[p.usage] || 'Pâture'}</span>`;
+    const evCount = (p.events || []).length;
+    const evStr = evCount > 0 ? ` · ${evCount} évén.` : '';
+    return `
+      <div class="sejour" style="cursor:pointer;border-left:3px solid ${color};" onclick="openParcelle('${p.id}')">
+        <div>
+          <strong>${escapeHtml(p.name)}</strong> ${usageBadge}
+          <div class="sejour-meta">${p.surface.toFixed(2)} ha · ${label}${evStr}</div>
+        </div>
+        <div style="font-size:18px;color:${color}">›</div>
+      </div>
+    `;
+  }).join('');
+
+  // Counts per usage
+  const counts = { all: state.parcelles.length };
+  Object.keys(USAGE_LABELS).forEach(u => counts[u] = 0);
+  state.parcelles.forEach(p => { counts[p.usage || 'pature'] = (counts[p.usage || 'pature'] || 0) + 1; });
+
+  const filterBtn = (key, label) => {
+    if (key !== 'all' && !counts[key]) return '';
+    const active = filter === key;
+    return `<button onclick="renderList('${key}')" style="flex:0 1 auto;padding:6px 10px;font-size:12px;${active ? 'background:var(--accent);color:#fff;border-color:var(--accent-dark);' : ''}">${label} (${counts[key] || 0})</button>`;
+  };
+
+  // Surface totals (only filtered)
+  const totalHa = filtered.reduce((s, p) => s + p.surface, 0).toFixed(2);
+
+  openModal(`
+    <h2>Mes parcelles</h2>
+    <div class="modal-actions" style="margin-top:0;margin-bottom:8px">
+      ${filterBtn('all', 'Toutes')}
+      ${filterBtn('pature', 'Pâture')}
+      ${filterBtn('foin', 'Foin')}
+      ${filterBtn('mixte', 'Mixte')}
+      ${filterBtn('culture', 'Culture')}
+      ${filterBtn('autre', 'Autre')}
+    </div>
+    <div class="info-card">${filtered.length} parcelle(s) · <strong>${totalHa} ha</strong></div>
+    ${items || '<div class="empty-msg">Aucune parcelle dans cette catégorie.</div>'}
+    <div class="modal-actions"><button onclick="closeModal()">Fermer</button></div>
+  `);
+};
+
+// ============== LOCATE ==============
+document.getElementById('btnLocate').onclick = () => {
+  if (!navigator.geolocation) {
+    alert('La géolocalisation n\'est pas disponible sur ce navigateur.');
+    return;
+  }
+  // Use navigator.geolocation directly to get a more useful error code
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const ll = L.latLng(pos.coords.latitude, pos.coords.longitude);
+      map.setView(ll, 17);
+      if (locMarker) map.removeLayer(locMarker);
+      locMarker = L.circleMarker(ll, {
+        radius: 8, color: '#1a73e8', fillColor: '#1a73e8', fillOpacity: 0.6, weight: 2
+      }).addTo(map);
+    },
+    err => {
+      let msg;
+      if (err.code === 1) {
+        msg = 'Permission refusée. Dans Chrome, touchez le cadenas/⓵ à gauche de l\'URL → Autorisations → activez « Localisation ». Recharger la page après.';
+      } else if (err.code === 2) {
+        msg = 'Position indisponible. Vérifiez que la localisation système (GPS) est activée dans les paramètres Android. Si vous êtes en intérieur, sortez ou attendez quelques secondes.';
+      } else if (err.code === 3) {
+        msg = 'Délai dépassé. Le GPS met parfois 30 s à accrocher en plein air. Réessayez.';
+      } else {
+        msg = 'Erreur GPS : ' + (err.message || 'inconnue');
+      }
+      alert(msg);
+    },
+    { enableHighAccuracy: true, timeout: 30000, maximumAge: 60000 }
+  );
+};
+let locMarker = null;
+
+// ============== MENU ==============
+document.getElementById('btnMenu').onclick = () => {
+  // Detect if any parcelle has out-of-range coordinates
+  let hasBadCoords = false;
+  for (const p of state.parcelles) {
+    for (const c of p.coords) {
+      if (c[0] < -180 || c[0] > 180 || c[1] < -90 || c[1] > 90) { hasBadCoords = true; break; }
+    }
+    if (hasBadCoords) break;
+  }
+
+  openModal(`
+    <h2>Menu</h2>
+    <div class="modal-actions">
+      <button class="primary" onclick="importDataPrompt()">Importer (Télépac, GeoJSON, sauvegarde)</button>
+    </div>
+    ${hasBadCoords ? `
+      <div class="info-card" style="background:rgba(184,84,26,0.12);border-left:3px solid var(--warn)">
+        ⚠ Certaines parcelles ont des coordonnées non géographiques (probablement Lambert-93). Corrigez-les :
+      </div>
+      <div class="modal-actions">
+        <button class="warn" onclick="reprojectExisting()">Reprojeter les parcelles existantes</button>
+      </div>
+    ` : ''}
+    <div class="modal-actions">
+      <button onclick="exportData()">Exporter (sauvegarde JSON)</button>
+      <button onclick="exportGeoJSON()">Exporter en GeoJSON</button>
+    </div>
+    <div class="modal-actions">
+      <button class="primary" onclick="exportXLSX()">📊 Exporter en Excel</button>
+    </div>
+    <div class="modal-actions">
+      <button onclick="openSettings()">Paramètres</button>
+    </div>
+    <div class="modal-actions">
+      <button class="danger" onclick="resetAll()">Tout effacer</button>
+    </div>
+    <div class="modal-actions">
+      <button onclick="closeModal()">Fermer</button>
+    </div>
+  `);
+};
+
+window.reprojectExisting = function() {
+  // Collect all rings, attempt to detect & reproject
+  const allRings = state.parcelles.map(p => p.coords);
+  const detect = detectAndReproject(allRings);
+  if (!detect.rings) {
+    alert('Reprojection impossible : ' + detect.error);
+    return;
+  }
+  if (detect.projection === 'WGS84 (lon/lat)') {
+    alert('Les coordonnées sont déjà en WGS84, rien à faire.');
+    return;
+  }
+  if (!confirm('Reprojeter ' + state.parcelles.length + ' parcelle(s) depuis ' + detect.projection + ' ?')) return;
+  state.parcelles.forEach((p, i) => {
+    p.coords = ensureClosed(detect.rings[i]);
+    p.surface = polygonAreaHa(p.coords);
+  });
+  saveData();
+  renderParcelles();
+  const all = L.featureGroup();
+  state.parcelles.forEach(p => all.addLayer(L.polygon(p.coords.map(c => [c[1], c[0]]))));
+  if (all.getLayers().length) map.fitBounds(all.getBounds(), { padding: [40, 40] });
+  closeModal();
+  alert('Reprojection effectuée (' + detect.projection + ').');
+};
+
+window.openLots = function() {
+  const items = state.lots.map((l, idx) => {
+    const cur = currentParcelForLot(l.id);
+    const where = cur ? ` · sur ${escapeHtml(cur.parcelle.name)}` : '';
+    const canDelete = state.lots.length > 1 && !cur;
+    return `
+      <div class="sejour" style="border-left:4px solid ${l.color}">
+        <div>
+          <strong>${escapeHtml(l.name)}</strong>${where}
+          <div class="sejour-meta">${cur ? 'Actuellement en pâture' : 'Au repos'}</div>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button class="sejour-del" style="color:var(--ink)" onclick="renameLot('${l.id}')" title="Renommer">✎</button>
+          ${canDelete ? `<button class="sejour-del" onclick="deleteLot('${l.id}')" title="Supprimer">×</button>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+  openModal(`
+    <h2>Lots / troupeaux</h2>
+    <div class="info-card">
+      Un lot représente un troupeau (ou un groupe d'animaux) qui se déplace de parcelle en parcelle. Chaque lot ne peut être que sur <strong>une seule parcelle</strong> à la fois — l'entrée sur une nouvelle parcelle ferme automatiquement la précédente.
+    </div>
+    ${items}
+    <div class="modal-actions">
+      <button class="primary" onclick="addLot()">+ Ajouter un lot</button>
+      <button onclick="closeModal()">Fermer</button>
+    </div>
+  `);
+};
+
+window.addLot = function() {
+  const usedColors = state.lots.map(l => l.color);
+  const nextColor = LOT_COLORS.find(c => !usedColors.includes(c)) || LOT_COLORS[state.lots.length % LOT_COLORS.length];
+  const colorButtons = LOT_COLORS.map(c =>
+    `<button type="button" data-color="${c}" onclick="document.getElementById('newLotColor').value='${c}';document.querySelectorAll('.color-pick').forEach(b=>b.style.outline='');this.style.outline='3px solid var(--ink)'" class="color-pick" style="width:36px;height:36px;background:${c};border:2px solid #fff;border-radius:50%;cursor:pointer;${c===nextColor?'outline:3px solid var(--ink)':''}"></button>`
+  ).join('');
+  openModal(`
+    <h2>Nouveau lot</h2>
+    <label>Nom</label>
+    <input type="text" id="newLotName" placeholder="ex: Vaches suitées, Génisses, Mâles…" autofocus>
+    <label>Couleur</label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${colorButtons}</div>
+    <input type="hidden" id="newLotColor" value="${nextColor}">
+    <div class="modal-actions">
+      <button onclick="openLots()">Annuler</button>
+      <button class="primary" onclick="saveNewLot()">Créer</button>
+    </div>
+  `);
+};
+
+window.saveNewLot = function() {
+  const name = document.getElementById('newLotName').value.trim();
+  const color = document.getElementById('newLotColor').value;
+  if (!name) return alert('Nom requis');
+  if (state.lots.some(l => l.name.toLowerCase() === name.toLowerCase())) return alert('Ce nom existe déjà.');
+  state.lots.push({ id: 'lot_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5), name, color });
+  saveData();
+  renderParcelles();
+  openLots();
+};
+
+window.renameLot = function(id) {
+  const l = state.lots.find(x => x.id === id);
+  if (!l) return;
+  const colorButtons = LOT_COLORS.map(c =>
+    `<button type="button" onclick="document.getElementById('renLotColor').value='${c}';document.querySelectorAll('.color-pick').forEach(b=>b.style.outline='');this.style.outline='3px solid var(--ink)'" class="color-pick" style="width:36px;height:36px;background:${c};border:2px solid #fff;border-radius:50%;cursor:pointer;${c===l.color?'outline:3px solid var(--ink)':''}"></button>`
+  ).join('');
+  openModal(`
+    <h2>Modifier le lot</h2>
+    <label>Nom</label>
+    <input type="text" id="renLotName" value="${escapeHtml(l.name)}">
+    <label>Couleur</label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${colorButtons}</div>
+    <input type="hidden" id="renLotColor" value="${l.color}">
+    <div class="modal-actions">
+      <button onclick="openLots()">Annuler</button>
+      <button class="primary" onclick="saveRenameLot('${l.id}')">Enregistrer</button>
+    </div>
+  `);
+};
+
+window.saveRenameLot = function(id) {
+  const l = state.lots.find(x => x.id === id);
+  l.name = document.getElementById('renLotName').value.trim() || l.name;
+  l.color = document.getElementById('renLotColor').value;
+  saveData();
+  renderParcelles();
+  openLots();
+};
+
+window.deleteLot = function(id) {
+  const l = state.lots.find(x => x.id === id);
+  if (!l) return;
+  // Check no current grazing
+  if (currentParcelForLot(id)) return alert('Ce lot est actuellement en pâture, sortez-le d\'abord.');
+  // Count past sejours referencing this lot
+  let count = 0;
+  state.parcelles.forEach(p => (p.sejours || []).forEach(s => { if (s.lotId === id) count++; }));
+  const msg = count > 0
+    ? `Ce lot est associé à ${count} séjour(s) passé(s). Si vous le supprimez, ces séjours seront réassignés au lot par défaut "${state.lots.find(x => x.id !== id).name}". Continuer ?`
+    : 'Supprimer ce lot ?';
+  if (!confirm(msg)) return;
+  const fallback = state.lots.find(x => x.id !== id).id;
+  state.parcelles.forEach(p => (p.sejours || []).forEach(s => { if (s.lotId === id) s.lotId = fallback; }));
+  state.lots = state.lots.filter(x => x.id !== id);
+  saveData();
+  renderParcelles();
+  openLots();
+};
+
+window.openSettings = function() {
+  openModal(`
+    <h2>Paramètres</h2>
+    <label>Durée de repos minimale (jours)</label>
+    <input type="text" id="restDays" value="${state.settings.restDays}" inputmode="numeric">
+    <div class="info-card">Au-delà de cette durée de repos, la parcelle redevient "disponible" (verte).</div>
+    <label>Aimantation au tracé</label>
+    <select id="snapToggle" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:6px;font-size:16px;font-family:inherit;background:var(--bg);color:var(--ink);">
+      <option value="on" ${snapEnabled ? 'selected' : ''}>Activée (les points s'aimantent aux parcelles voisines)</option>
+      <option value="off" ${!snapEnabled ? 'selected' : ''}>Désactivée</option>
+    </select>
+    <div class="info-card">Évite chevauchements et trous entre parcelles voisines. Un cercle orange apparaît quand le point s'accroche à un sommet ou un bord existant.</div>
+    <div class="modal-actions">
+      <button onclick="closeModal()">Annuler</button>
+      <button class="primary" onclick="saveSettings()">Enregistrer</button>
+    </div>
+  `);
+};
+window.saveSettings = function() {
+  const d = parseInt(document.getElementById('restDays').value, 10);
+  if (!isNaN(d) && d > 0) state.settings.restDays = d;
+  snapEnabled = document.getElementById('snapToggle').value === 'on';
+  state.settings.snapEnabled = snapEnabled;
+  saveData(); renderParcelles(); closeModal();
+};
+
+window.exportData = function() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `paturage-${todayISO()}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+window.exportXLSX = function() {
+  if (state.parcelles.length === 0) {
+    alert('Aucune parcelle à exporter.');
+    return;
+  }
+  if (typeof XLSX === 'undefined') {
+    alert('Bibliothèque Excel non chargée. Vérifiez votre connexion internet et réessayez.');
+    return;
+  }
+
+  // Color palette per usage (light fill + dark text, matching the mockup)
+  const USAGE_COLORS = {
+    pature:  { fill: 'EAF3DE', text: '173404', accent: '97C459', label: 'Pâture' },
+    foin:    { fill: 'FAEEDA', text: '412402', accent: 'EF9F27', label: 'Foin' },
+    mixte:   { fill: 'EEEDFE', text: '26215C', accent: 'AFA9EC', label: 'Mixte' },
+    culture: { fill: 'E6F1FB', text: '042C53', accent: '85B7EB', label: 'Culture' },
+    autre:   { fill: 'F1EFE8', text: '2C2C2A', accent: 'B4B2A9', label: 'Autre' },
+  };
+  const USAGE_ORDER = ['pature', 'foin', 'mixte', 'culture', 'autre'];
+
+  function thinBorder(rgb) {
+    return {
+      top: { style: 'thin', color: { rgb } },
+      bottom: { style: 'thin', color: { rgb } },
+      left: { style: 'thin', color: { rgb } },
+      right: { style: 'thin', color: { rgb } },
+    };
+  }
+
+  // Build event log per parcelle
+  // sejour -> 1 row with both entry and exit dates
+  // event -> 1 row
+  function buildLog(p) {
+    const log = [];
+    (p.sejours || []).forEach(s => {
+      const lotName = s.lotId ? (getLot(s.lotId)?.name || '') : '';
+      const dur = s.exit ? daysBetween(s.entry, s.exit) : daysBetween(s.entry, todayISO());
+      log.push({
+        type: 'Pâturage',
+        entryDate: s.entry,
+        exitDate: s.exit || '',
+        duration: dur,
+        durationStr: s.exit ? String(dur) : `${dur} (en cours)`,
+        lot: lotName,
+        qty: '',
+        unit: '',
+        note: s.note || '',
+        sortDate: s.entry,
+      });
+    });
+    (p.events || []).forEach(ev => {
+      log.push({
+        type: eventTypeLabel(ev.type),
+        entryDate: ev.date,
+        exitDate: '',
+        duration: '',
+        durationStr: '',
+        lot: '',
+        qty: typeof ev.qty === 'number' ? ev.qty : '',
+        unit: ev.unit || '',
+        note: ev.note || '',
+        sortDate: ev.date,
+      });
+    });
+    log.sort((a, b) => (a.sortDate || '').localeCompare(b.sortDate || ''));
+    return log;
+  }
+
+  // Per-parcelle subtotal: sum quantities by event type+unit, plus total grazing days per lot
+  function buildSubtotal(p) {
+    const totals = {}; // key: "type|unit" -> { type, unit, total, count }
+    (p.events || []).forEach(ev => {
+      if (typeof ev.qty !== 'number' || isNaN(ev.qty)) return;
+      const key = ev.type + '|' + (ev.unit || '');
+      if (!totals[key]) totals[key] = { type: eventTypeLabel(ev.type), unit: ev.unit || '', total: 0, count: 0 };
+      totals[key].total += ev.qty;
+      totals[key].count += 1;
+    });
+    // Grazing days per lot
+    const grazingByLot = {};
+    (p.sejours || []).forEach(s => {
+      const dur = s.exit ? daysBetween(s.entry, s.exit) : daysBetween(s.entry, todayISO());
+      const lotName = s.lotId ? (getLot(s.lotId)?.name || 'Troupeau') : 'Troupeau';
+      grazingByLot[lotName] = (grazingByLot[lotName] || 0) + dur;
+    });
+    return { totals, grazingByLot };
+  }
+
+  // Group parcelles by usage, sort by usage order then alpha
+  const grouped = {};
+  USAGE_ORDER.forEach(u => grouped[u] = []);
+  state.parcelles.forEach(p => {
+    const u = p.usage || 'pature';
+    if (!grouped[u]) grouped[u] = [];
+    grouped[u].push(p);
+  });
+  Object.keys(grouped).forEach(u => grouped[u].sort((a, b) => a.name.localeCompare(b.name)));
+
+  // ============== BUILD ROWS ==============
+  // Columns: Parcelle | Surface (ha) | Usage | Type | Date entrée | Date sortie | Durée (j) | Lot | Quantité | Unité | Note
+  const COLS = 11;
+  const HEADERS = ['Parcelle', 'Surface (ha)', 'Usage', 'Type', 'Date entrée', 'Date sortie', 'Durée (j)', 'Lot', 'Quantité', 'Unité', 'Note'];
+
+  const rows = [];
+  const styles = []; // { r, c, style }
+  const merges = [];
+
+  // Title row
+  rows.push(['Suivi de pâturage — Export du ' + formatDate(todayISO())]);
+  styles.push({ r: 0, range: { c0: 0, c1: COLS - 1 }, style: {
+    font: { bold: true, sz: 14, color: { rgb: 'FFFFFF' } },
+    fill: { patternType: 'solid', fgColor: { rgb: '3A5A40' } },
+    alignment: { horizontal: 'center', vertical: 'center' },
+  }});
+  merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: COLS - 1 } });
+  rows.push([]);
+
+  // Column headers row
+  const headerRowIdx = rows.length;
+  rows.push(HEADERS);
+  styles.push({ r: headerRowIdx, range: { c0: 0, c1: COLS - 1 }, style: {
+    font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } },
+    fill: { patternType: 'solid', fgColor: { rgb: '444441' } },
+    alignment: { horizontal: 'left', vertical: 'center' },
+    border: thinBorder('FFFFFF'),
+  }});
+
+  // Iterate by usage group
+  USAGE_ORDER.forEach(usage => {
+    const list = grouped[usage] || [];
+    if (list.length === 0) return;
+    const colors = USAGE_COLORS[usage];
+
+    list.forEach(p => {
+      const log = buildLog(p);
+      const sub = buildSubtotal(p);
+
+      const cellStyle = {
+        font: { color: { rgb: colors.text }, sz: 10 },
+        fill: { patternType: 'solid', fgColor: { rgb: colors.fill } },
+        alignment: { vertical: 'center', wrapText: true },
+        border: thinBorder('FFFFFF'),
+      };
+      const cellStyleRight = Object.assign({}, cellStyle, {
+        alignment: { horizontal: 'right', vertical: 'center' },
+      });
+
+      if (log.length === 0) {
+        // Single row: parcelle info, no events
+        const r = rows.length;
+        rows.push([p.name, parseFloat(p.surface.toFixed(2)), colors.label, '(aucun événement)', '', '', '', '', '', '', p.note || '']);
+        for (let c = 0; c < COLS; c++) {
+          const s = (c === 8) ? cellStyleRight : cellStyle;
+          styles.push({ r, c, style: c === 3 ? Object.assign({}, s, { font: Object.assign({}, s.font, { italic: true }) }) : s });
+        }
+      } else {
+        log.forEach((entry, i) => {
+          const r = rows.length;
+          rows.push([
+            i === 0 ? p.name : '',
+            i === 0 ? parseFloat(p.surface.toFixed(2)) : '',
+            i === 0 ? colors.label : '',
+            entry.type,
+            entry.entryDate ? formatDate(entry.entryDate) : '',
+            entry.exitDate ? formatDate(entry.exitDate) : (entry.type === 'Pâturage' && !entry.exitDate ? 'en cours' : ''),
+            entry.duration === '' ? '' : entry.duration,
+            entry.lot,
+            entry.qty,
+            entry.unit,
+            entry.note,
+          ]);
+          for (let c = 0; c < COLS; c++) {
+            let s = (c === 8) ? cellStyleRight : cellStyle;
+            // Bold the parcelle name on first row
+            if (i === 0 && c === 0) {
+              s = Object.assign({}, s, { font: Object.assign({}, s.font, { bold: true }) });
+            }
+            // Italic "en cours"
+            if (c === 5 && entry.type === 'Pâturage' && !entry.exitDate) {
+              s = Object.assign({}, s, { font: Object.assign({}, s.font, { italic: true }) });
+            }
+            styles.push({ r, c, style: s });
+          }
+        });
+      }
+
+      // Subtotal row
+      const subParts = [];
+      Object.values(sub.totals).forEach(t => {
+        const totVal = t.total >= 10 ? t.total.toFixed(1) : t.total.toFixed(2).replace(/\.?0+$/, '');
+        subParts.push(`${t.type} : ${totVal}${t.unit ? ' ' + t.unit : ''} (${t.count}×)`);
+      });
+      Object.entries(sub.grazingByLot).forEach(([lot, days]) => {
+        subParts.push(`Pâturage ${lot} : ${days} j`);
+      });
+      const subText = subParts.length > 0 ? 'Cumul : ' + subParts.join('  ·  ') : 'Aucun cumul';
+      const rSub = rows.length;
+      rows.push(['', '', '', subText, '', '', '', '', '', '', '']);
+      const subStyle = {
+        font: { bold: true, italic: true, color: { rgb: colors.text }, sz: 10 },
+        fill: { patternType: 'solid', fgColor: { rgb: colors.accent } },
+        alignment: { vertical: 'center' },
+        border: thinBorder('FFFFFF'),
+      };
+      for (let c = 0; c < COLS; c++) {
+        styles.push({ r: rSub, c, style: subStyle });
+      }
+      merges.push({ s: { r: rSub, c: 3 }, e: { r: rSub, c: COLS - 1 } });
+
+      // Empty separator row
+      rows.push([]);
+    });
+  });
+
+  // ============== BUILD WORKSHEET ==============
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!merges'] = merges;
+  ws['!cols'] = [
+    { wch: 18 }, // Parcelle
+    { wch: 11 }, // Surface
+    { wch: 9 },  // Usage
+    { wch: 18 }, // Type
+    { wch: 12 }, // Date entrée
+    { wch: 12 }, // Date sortie
+    { wch: 9 },  // Durée
+    { wch: 12 }, // Lot
+    { wch: 9 },  // Quantité
+    { wch: 8 },  // Unité
+    { wch: 35 }, // Note
+  ];
+
+  // Apply styles
+  styles.forEach(item => {
+    if (item.range) {
+      // Range style: apply to all cells in row from c0 to c1
+      for (let c = item.range.c0; c <= item.range.c1; c++) {
+        const addr = XLSX.utils.encode_cell({ r: item.r, c });
+        if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+        ws[addr].s = item.style;
+      }
+    } else {
+      const addr = XLSX.utils.encode_cell({ r: item.r, c: item.c });
+      if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+      ws[addr].s = item.style;
+    }
+  });
+
+  // Row heights
+  ws['!rows'] = ws['!rows'] || [];
+  ws['!rows'][0] = { hpt: 24 };
+  if (ws['!rows'][headerRowIdx] === undefined) ws['!rows'][headerRowIdx] = { hpt: 22 };
+
+  // Freeze top header rows
+  ws['!freeze'] = { xSplit: 0, ySplit: headerRowIdx + 1 };
+
+  // Auto-filter on header row
+  const lastRow = rows.length - 1;
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: headerRowIdx, c: 0 }, e: { r: lastRow, c: COLS - 1 } }) };
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Suivi pâturage');
+
+  const filename = `paturage-${todayISO()}.xlsx`;
+  XLSX.writeFile(wb, filename);
+};
+
+window.exportGeoJSON = function() {
+  const fc = {
+    type: 'FeatureCollection',
+    features: state.parcelles.map(p => ({
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [p.coords] },
+      properties: {
+        name: p.name, surface_ha: p.surface, note: p.note,
+        usage: p.usage || 'pature',
+        sejours: p.sejours, events: p.events || []
+      }
+    }))
+  };
+  const blob = new Blob([JSON.stringify(fc, null, 2)], { type: 'application/geo+json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `parcelles-${todayISO()}.geojson`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+window.importDataPrompt = function() { document.getElementById('fileInput').click(); };
+
+// ============== IMPORT ==============
+const loadingOverlay = document.getElementById('loading');
+const loadingMsg = document.getElementById('loadingMsg');
+function setLoading(msg) {
+  if (msg) { loadingMsg.textContent = msg; loadingOverlay.classList.add('show'); }
+  else loadingOverlay.classList.remove('show');
+}
+
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const lower = file.name.toLowerCase();
+  try {
+    if (lower.endsWith('.zip')) {
+      setLoading('Lecture du Shapefile…');
+      const buf = await file.arrayBuffer();
+      const geo = await shp(buf);
+      setLoading(null);
+      handleImportedGeoJSON(geo, true);
+    } else {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (data.parcelles && Array.isArray(data.parcelles)) {
+        if (!confirm(`Importer ${data.parcelles.length} parcelle(s) ? Cela remplacera les données actuelles.`)) return;
+        state = data;
+        if (!state.settings) state.settings = { restDays: 30 };
+        saveData(); renderParcelles(); closeModal();
+        alert('Importation réussie.');
+      } else if (data.type === 'FeatureCollection' || data.type === 'Feature' || Array.isArray(data)) {
+        handleImportedGeoJSON(data, false);
+      } else {
+        alert('Format non reconnu.');
+      }
+    }
+  } catch (err) {
+    setLoading(null);
+    alert('Erreur de lecture : ' + err.message);
+    console.error(err);
+  }
+  e.target.value = '';
+});
+
+// Define common French projections for proj4
+proj4.defs([
+  ['EPSG:2154', '+proj=lcc +lat_1=49 +lat_2=44 +lat_0=46.5 +lon_0=3 +x_0=700000 +y_0=6600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs'], // Lambert 93
+  ['EPSG:27572', '+proj=lcc +lat_1=46.8 +lat_0=46.8 +lon_0=0 +k_0=0.99987742 +x_0=600000 +y_0=2200000 +a=6378249.2 +b=6356515 +towgs84=-168,-60,320,0,0,0,0 +pm=paris +units=m +no_defs'], // Lambert II étendu (ancien Télépac)
+  ['EPSG:4326', '+proj=longlat +datum=WGS84 +no_defs'],
+  ['EPSG:3857', '+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs'],
+]);
+
+function detectAndReproject(rings) {
+  // Find bounding box of all rings
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  rings.forEach(r => r.forEach(p => {
+    if (p[0] < minX) minX = p[0];
+    if (p[0] > maxX) maxX = p[0];
+    if (p[1] < minY) minY = p[1];
+    if (p[1] > maxY) maxY = p[1];
+  }));
+  // Already lon/lat?
+  if (minX >= -180 && maxX <= 180 && minY >= -90 && maxY <= 90) {
+    return { rings, projection: 'WGS84 (lon/lat)' };
+  }
+  // Try Lambert-93: typical X range 0–1300000, Y range 6000000–7200000 for metropolitan France
+  if (minX > 0 && maxX < 1300000 && minY > 6000000 && maxY < 7200000) {
+    const reproj = rings.map(r => r.map(p => proj4('EPSG:2154', 'EPSG:4326', [p[0], p[1]])));
+    return { rings: reproj, projection: 'Lambert-93 → WGS84' };
+  }
+  // Lambert II étendu (ancien) : X 0–1200000, Y 1500000–2700000
+  if (minX > 0 && maxX < 1200000 && minY > 1500000 && maxY < 2800000) {
+    const reproj = rings.map(r => r.map(p => proj4('EPSG:27572', 'EPSG:4326', [p[0], p[1]])));
+    return { rings: reproj, projection: 'Lambert II étendu → WGS84' };
+  }
+  // Web Mercator (3857): X large in meters, Y in meters too
+  if (Math.abs(maxX) < 2.1e7 && Math.abs(maxY) < 2.1e7 && (Math.abs(maxX) > 180 || Math.abs(maxY) > 90)) {
+    const reproj = rings.map(r => r.map(p => proj4('EPSG:3857', 'EPSG:4326', [p[0], p[1]])));
+    return { rings: reproj, projection: 'Web Mercator → WGS84' };
+  }
+  return { rings: null, projection: null, error: `coordonnées hors plage connue (X: ${minX.toFixed(0)}…${maxX.toFixed(0)}, Y: ${minY.toFixed(0)}…${maxY.toFixed(0)})` };
+}
+
+function handleImportedGeoJSON(geo, isTelepac) {
+  let features = [];
+  const collect = (g) => {
+    if (!g) return;
+    if (Array.isArray(g)) { g.forEach(collect); return; }
+    if (g.type === 'FeatureCollection') features.push(...g.features);
+    else if (g.type === 'Feature') features.push(g);
+  };
+  collect(geo);
+
+  // Pre-pass: collect all rings to detect projection
+  const allRings = [];
+  features.forEach(f => {
+    if (!f.geometry) return;
+    if (f.geometry.type === 'Polygon') allRings.push(f.geometry.coordinates[0]);
+    else if (f.geometry.type === 'MultiPolygon') f.geometry.coordinates.forEach(poly => allRings.push(poly[0]));
+  });
+  if (allRings.length === 0) { alert('Aucun polygone trouvé dans le fichier.'); return; }
+
+  const detect = detectAndReproject(allRings);
+  if (!detect.rings) {
+    alert('Projection non reconnue : ' + detect.error + '\n\nLes systèmes pris en charge sont : WGS84 (lon/lat), Lambert-93 (EPSG:2154), Lambert II étendu (EPSG:27572), Web Mercator (EPSG:3857).');
+    return;
+  }
+
+  // Build a map from old ring reference to reprojected ring (preserve mapping order)
+  const reprojIter = detect.rings[Symbol.iterator]();
+
+  const candidates = [];
+  features.forEach(f => {
+    if (!f.geometry) return;
+    const props = f.properties || {};
+    const guessName = props.NUM_ILOT || props.ID_ILOT || props.NUMERO_I || props.numero_il ||
+                      props.ilot || props.ID || props.id ||
+                      props.name || props.NAME || props.NOM || props.nom || '';
+    const guessNote = [props.CULTURE, props.LIBELLE_C, props.libelle_c, props.libelle, props.commune, props.COMMUNE]
+                       .filter(Boolean).join(' · ');
+    if (f.geometry.type === 'Polygon') {
+      const ring = reprojIter.next().value;
+      candidates.push({ ring, name: guessName, note: guessNote, props });
+    } else if (f.geometry.type === 'MultiPolygon') {
+      f.geometry.coordinates.forEach((poly, i) => {
+        const ring = reprojIter.next().value;
+        candidates.push({
+          ring,
+          name: guessName ? `${guessName}-${i+1}` : '',
+          note: guessNote, props,
+        });
+      });
+    }
+  });
+
+  if (candidates.length === 0) { alert('Aucun polygone trouvé dans le fichier.'); return; }
+  console.log('Import :', detect.projection);
+
+  const label = isTelepac ? 'îlot(s) Télépac' : 'parcelle(s)';
+  const ok = confirm(
+    `${candidates.length} ${label} trouvé(s).\n\n` +
+    `Confirmer l'AJOUT à vos ${state.parcelles.length} parcelle(s) existante(s) ?`
+  );
+  if (!ok) return;
+
+  snapshotState(`Import de ${candidates.length} ${label}`);
+  const baseStamp = Date.now();
+  candidates.forEach((c, i) => {
+    const ring = ensureClosed(c.ring.slice());
+    state.parcelles.push({
+      id: 'p_' + baseStamp + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+      name: c.name ? String(c.name) : (isTelepac ? `Îlot ${i + 1}` : `Importée ${i + 1}`),
+      note: c.note || '',
+      usage: 'pature',
+      coords: ring,
+      surface: polygonAreaHa(ring),
+      sejours: [],
+      events: [],
+      created: todayISO(),
+      source: isTelepac ? 'telepac' : 'geojson',
+    });
+  });
+  saveData();
+  renderParcelles();
+  const all = L.featureGroup();
+  state.parcelles.forEach(p => all.addLayer(L.polygon(p.coords.map(c => [c[1], c[0]]))));
+  if (all.getLayers().length) map.fitBounds(all.getBounds(), { padding: [40, 40] });
+  closeModal();
+  alert(`${candidates.length} ${label} importé(s).`);
+}
+
+window.resetAll = function() {
+  if (!confirm('Tout effacer ? Cette action est irréversible. Pensez à exporter avant.')) return;
+  if (!confirm('Vraiment ? Toutes les parcelles et l\'historique seront perdus.')) return;
+  state = { parcelles: [], settings: { restDays: 30 } };
+  saveData(); renderParcelles(); closeModal();
+};
+
+// ============== HELP ==============
+document.getElementById('btnHelp').onclick = () => {
+  openModal(`
+    <h2>Aide</h2>
+    <p style="font-size:14px;line-height:1.5">
+      <strong>Deux modes d'utilisation</strong><br>
+      L'appli a deux modes, basculables avec le bouton <strong>« ✎ Édition »</strong> en haut à droite :
+      <br>• <strong>Mode usage</strong> (par défaut, barre verte) : déplacer le troupeau, ajouter des événements (foin, fumure…), consulter les parcelles.
+      <br>• <strong>Mode édition</strong> (barre bleue) : créer, découper, fusionner, modifier les contours des parcelles.
+    </p>
+    <p style="font-size:14px;line-height:1.5">
+      <strong>Mode usage : déplacer le troupeau</strong><br>
+      Tap sur une parcelle → « Entrée du troupeau ». La sortie de la parcelle précédente se fait automatiquement à la même date. Tap à nouveau sur la parcelle pour ajouter un événement (foin, fauche, fumure…).
+    </p>
+    <p style="font-size:14px;line-height:1.5">
+      <strong>Mode édition : tracer / découper / fusionner</strong><br>
+      Tap sur « ✎ Édition » → la barre du bas affiche les outils. <strong>+ Parcelle</strong> pour tracer (tap sur la carte, glisser pour déplacer un point, tap pour supprimer, ✓ pour terminer). <strong>Découper</strong> ou <strong>Fusionner</strong> pour ouvrir la sélection. Tap sur une parcelle existante pour modifier son tracé. Quand vous avez fini, tap sur « ✓ Terminé » pour revenir au mode usage.
+    </p>
+    <p style="font-size:14px;line-height:1.5">
+      <strong>Aimantation au tracé</strong><br>
+      Quand vous posez ou déplacez un point, il s'aimante automatiquement aux sommets et bords des parcelles voisines (cercle orange = accroché). Idéal pour des parcelles contiguës sans chevauchement. Désactivable dans Paramètres si gênant.
+    </p>
+    <p style="font-size:14px;line-height:1.5">
+      <strong>Importer un export Télépac</strong><br>
+      Menu ⋯ → « Importer ». Sélectionnez le <em>.zip</em> Télépac (Shapefile) ou un <em>.geojson</em>. Les îlots s'ajoutent à vos parcelles existantes.
+    </p>
+    <p style="font-size:14px;line-height:1.5">
+      <strong>Lots / multi-troupeaux</strong><br>
+      Bouton « 🐄 Lots » de la barre usage. Par défaut un seul lot (« Troupeau ») ; vous pouvez en créer d'autres (vaches suitées, génisses…). Chaque lot ne peut être que sur une parcelle à la fois — l'entrée sur une nouvelle parcelle ferme automatiquement la précédente.
+    </p>
+    <p style="font-size:14px;line-height:1.5">
+      <strong>Sauvegarde</strong><br>
+      Les données restent dans le navigateur. Exportez régulièrement via menu ⋯.
+    </p>
+    <p style="font-size:14px;line-height:1.5">
+      <strong>Installer comme appli</strong><br>
+      Chrome Android : menu ⋮ → « Ajouter à l'écran d'accueil ».
+    </p>
+    <div class="modal-actions"><button class="primary" onclick="closeModal()">OK</button></div>
+  `);
+};
+
+// ============== INIT ==============
+renderParcelles();
+if (state.parcelles.length > 0) {
+  const all = L.featureGroup();
+  state.parcelles.forEach(p => all.addLayer(L.polygon(p.coords.map(c => [c[1], c[0]]))));
+  map.fitBounds(all.getBounds(), { padding: [40, 40] });
+}
+if (state.parcelles.length === 0 && !localStorage.getItem('paturage_seen_help')) {
+  setTimeout(() => document.getElementById('btnHelp').click(), 500);
+  localStorage.setItem('paturage_seen_help', '1');
+}
+
+// =====================================================
+// ÉVÉNEMENTS UI : authentification et menu utilisateur
+// =====================================================
+
+document.getElementById('btnSignin').addEventListener('click', () => handleAuthSubmit('signin'));
+document.getElementById('btnSignup').addEventListener('click', () => handleAuthSubmit('signup'));
+document.getElementById('authPassword').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleAuthSubmit('signin');
+});
+
+const userMenu = document.getElementById('userMenu');
+document.getElementById('btnUserMenu').addEventListener('click', (e) => {
+  e.stopPropagation();
+  userMenu.style.display = userMenu.style.display === 'none' ? 'block' : 'none';
+});
+document.addEventListener('click', (e) => {
+  if (!userMenu.contains(e.target) && e.target.id !== 'btnUserMenu') {
+    userMenu.style.display = 'none';
+  }
+});
+document.getElementById('btnSignout').addEventListener('click', async () => {
+  if (confirm('Se déconnecter ?\n\nVos données restent sauvegardées sur le serveur et localement.')) {
+    userMenu.style.display = 'none';
+    await doSignOut();
+  }
+});
+document.getElementById('btnForceSync').addEventListener('click', async () => {
+  if (!currentUser) return;
+  pendingPush = true;
+  await pushToServer();
+});
+
+// Améliorer updateSyncIndicator pour aussi mettre à jour le menu
+const _origUpdateSync = updateSyncIndicator;
+updateSyncIndicator = function() {
+  _origUpdateSync();
+  const menuEl = document.getElementById('syncIndicatorMenu');
+  if (menuEl) {
+    const labels = {
+      synced: '🟢 Synchronisé',
+      pending: '🟡 Modifications en attente',
+      syncing: '🟡 Synchronisation en cours...',
+      offline: '🔴 Hors ligne',
+      error: '⚠️ Erreur de synchronisation'
+    };
+    menuEl.textContent = labels[syncStatus] || '';
+  }
+};
+updateSyncIndicator();
+
+// État initial : statut online/offline selon la connectivité
+if (!navigator.onLine) setSyncStatus('offline');
+</script>
+</body>
+</html>
