@@ -331,7 +331,7 @@
 <script src="https://unpkg.com/proj4@2.11.0/dist/proj4.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/polyclip-ts@0.16.8/dist/polyclip-ts.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.105.1/dist/umd/supabase.js"></script>
 <script>
 'use strict';
 
@@ -339,8 +339,8 @@
 // CONFIGURATION SUPABASE
 // =====================================================
 const SUPABASE_URL = 'https://rizodpcstivvaalmggpk.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpem9kcGNzdGl2dmFhbG1nZ3BrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MzA4OTEsImV4cCI6MjA5MzEwNjg5MX0.0rwjRklUscAuW-TIkLeT-oKElKktbVAqFLQucVbjEm8';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+const SUPABASE_ANON_KEY = 'sb_publishable_awZGoVUSCgDh6O98NEL4aQ_9o0wJ-v7';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true }
 });
 
