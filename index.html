@@ -561,7 +561,13 @@ function hideAuthScreen() {
 }
 
 async function doSignUp(email, password) {
-  const { data, error } = await sb.auth.signUp({ email, password });
+  const { data, error } = await sb.auth.signUp({
+    email,
+    password,
+    options: {
+      emailRedirectTo: window.location.origin + window.location.pathname
+    }
+  });
   if (error) throw error;
   return data;
 }
